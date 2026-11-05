@@ -43,6 +43,11 @@
     const day = String(date.getUTCDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
+  function addDaysIso(value, days) {
+    const date = parseIsoDate(value);
+    date.setUTCDate(date.getUTCDate() + days);
+    return formatIsoDate(date);
+  }
   function mondayOfIso(value) {
     const date = parseIsoDate(value);
     const weekday = date.getUTCDay();
@@ -137,8 +142,8 @@
       } catch {
         pushIssue(issues, "$.term.semesterStart", "invalid_date", "semesterStart \u65E0\u6548");
       }
-      if (!Number.isInteger(timetable.term.teachingWeeks) || timetable.term.teachingWeeks < 1 || timetable.term.teachingWeeks > 30) {
-        pushIssue(issues, "$.term.teachingWeeks", "invalid_weeks", "teachingWeeks \u5FC5\u987B\u5728 1\u201330");
+      if (!Number.isInteger(timetable.term.teachingWeeks) || timetable.term.teachingWeeks < 1) {
+        pushIssue(issues, "$.term.teachingWeeks", "invalid_weeks", "teachingWeeks \u5FC5\u987B\u662F\u6B63\u6574\u6570");
       }
       if (!Array.isArray(timetable.term.periodSchedules) || timetable.term.periodSchedules.length === 0) {
         pushIssue(issues, "$.term.periodSchedules", "missing_periods", "\u81F3\u5C11\u9700\u8981\u4E00\u5957\u8282\u6B21\u65F6\u95F4\u8868");
@@ -206,9 +211,9 @@
           if (!Array.isArray(meeting.weeks) || meeting.weeks.length === 0) {
             missingPeriods += 1;
             pushIssue(issues, `${meetingPath}.weeks`, "missing_weeks", "\u4E0A\u8BFE\u5B9E\u4F8B\u6CA1\u6709\u5468\u6B21");
-          } else if (meeting.weeks.some((week) => !Number.isInteger(week) || week < 1 || week > 30)) {
+          } else if (meeting.weeks.some((week) => !Number.isInteger(week) || week < 1)) {
             unknownWeekRules += 1;
-            pushIssue(issues, `${meetingPath}.weeks`, "invalid_weeks", "\u5468\u6B21\u5FC5\u987B\u5728 1\u201330");
+            pushIssue(issues, `${meetingPath}.weeks`, "invalid_weeks", "\u5468\u6B21\u5FC5\u987B\u662F\u6B63\u6574\u6570");
           }
           if (!meeting.teacher) missingTeacher += 1;
           if (!meeting.room) missingRoom += 1;
@@ -414,20 +419,22 @@
 
   // src/connectors/sdk/normalize.ts
   function finalizeConnectorExtraction(extraction, descriptor4, semester, options) {
-    if (!isMonday(semester.semesterStart)) {
+    const draft = extraction.draft;
+    const authoritativeTerm = draft.termSource === "adapter";
+    const semesterStart = authoritativeTerm ? draft.term.semesterStart : semester.semesterStart;
+    if (!isMonday(semesterStart)) {
       throw new Error("\u5B66\u671F\u5F00\u59CB\u65E5\u671F\u5FC5\u987B\u662F\u7B2C 1 \u5468\u5468\u4E00");
     }
-    const draft = extraction.draft;
     const periodSchedules = draft.term.periodSchedules && draft.term.periodSchedules.length > 0 ? draft.term.periodSchedules : [
       {
-        id: `periods-${semester.semesterStart}`,
+        id: `periods-${semesterStart}`,
         label: "\u7528\u6237\u786E\u8BA4\u7684\u9ED8\u8BA4\u4F5C\u606F",
-        effectiveFrom: semester.semesterStart,
+        effectiveFrom: semesterStart,
         periods: (options.fallbackPeriods ?? DEFAULT_PERIODS).map((period) => ({ ...period }))
       }
     ];
     const maxWeek = Math.max(1, ...draft.courses.flatMap((course) => course.meetings.flatMap((meeting) => meeting.weeks)));
-    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const now = options.extractedAt ?? (/* @__PURE__ */ new Date()).toISOString();
     const sourceUrl = options.sourceUrl ? sanitizeSourceUrl(options.sourceUrl) : void 0;
     const timetable = {
       schemaVersion: EXCHANGE_SCHEMA_VERSION,
@@ -443,13 +450,13 @@
       },
       term: {
         ...draft.term,
-        academicYear: semester.academicYear ?? draft.term.academicYear ?? inferAcademicYear(semester.semesterStart),
+        academicYear: authoritativeTerm ? draft.term.academicYear : semester.academicYear ?? draft.term.academicYear ?? inferAcademicYear(semesterStart),
         termCode: draft.term.termCode && draft.term.termCode !== "unknown" ? draft.term.termCode : semester.termCode ?? "unknown",
-        termName: semester.termName || draft.term.termName,
-        semesterStart: semester.semesterStart,
-        teachingWeeks: semester.teachingWeeks ?? draft.term.teachingWeeks ?? maxWeek,
-        timezone: semester.timezone ?? draft.term.timezone ?? "Asia/Shanghai",
-        campus: semester.campus ?? draft.term.campus,
+        termName: authoritativeTerm ? draft.term.termName : semester.termName || draft.term.termName,
+        semesterStart,
+        teachingWeeks: authoritativeTerm ? draft.term.teachingWeeks ?? maxWeek : semester.teachingWeeks ?? draft.term.teachingWeeks ?? maxWeek,
+        timezone: authoritativeTerm ? draft.term.timezone : semester.timezone ?? draft.term.timezone ?? "Asia/Shanghai",
+        campus: authoritativeTerm ? draft.term.campus ?? semester.campus : semester.campus ?? draft.term.campus,
         periodSchedules
       },
       courses: draft.courses,
@@ -495,19 +502,643 @@
     platformVersion: "jwapp / wdkbby (2026 layout)",
     entryUrl: "https://jwxt.whut.edu.cn/jwapp/sys/homeapp/index.do?forceCas=1",
     domains: ["jwxt.whut.edu.cn", "zhlgd.whut.edu.cn"],
-    status: "experimental",
-    capabilities: ["timetable", "semester", "periods", "classroom", "adjustments"],
-    methods: ["api", "dom"],
+    status: "verified",
+    capabilities: ["timetable", "semester", "periods", "classroom"],
+    methods: ["api"],
+    lastVerifiedAt: "2026-11-06",
     evidenceUrls: [
       "https://github.com/lingion/sleepy/blob/main/app/src/main/java/com/lingion/sleepy/data/jw/JwWhutParser.kt",
       "https://github.com/lingion/sleepy/blob/main/docs/schools-list.md"
     ],
     limitations: [
-      "\u534F\u8BAE\u7ED3\u6784\u6765\u81EA\u516C\u5F00 MIT/\u884C\u4E3A\u7814\u7A76\u8D44\u6599\uFF0C\u5C1A\u672A\u5B8C\u6210\u672C\u9879\u76EE\u7684\u771F\u5B9E\u5B66\u751F\u8D26\u53F7\u7AEF\u5230\u7AEF\u9A8C\u6536\u3002",
-      "\u5B66\u671F\u7B2C\u4E00\u5468\u5468\u4E00\u901A\u5E38\u9700\u8981\u7528\u6237\u786E\u8BA4\u3002",
-      "\u8C03\u8BFE\u6570\u636E\u4EC5\u5728\u6559\u52A1\u63A5\u53E3\u660E\u786E\u8FD4\u56DE\u65F6\u4F7F\u7528\uFF0C\u7F3A\u5931\u65F6\u4E0D\u4F1A\u81EA\u52A8\u63A8\u65AD\u3002"
+      "Verified for the 2026-2027-1 student context on 2026-11-06; later WHUT variants require revalidation.",
+      "The observed response had empty notArrangeList and practiceList collections; their non-empty semantics are not yet verified.",
+      "No dedicated WHUT adjustment endpoint was found; cancellation/reschedule data is not auto-generated without explicit records."
     ]
   };
+
+  // src/connectors/sdk/http.ts
+  var ConnectorHttpError = class extends Error {
+    status;
+    url;
+    constructor(message, status, url) {
+      super(message);
+      this.name = "ConnectorHttpError";
+      this.status = status;
+      this.url = url;
+    }
+  };
+  async function request(fetchImpl, url, init, timeoutMs = 15e3) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetchImpl(url, { ...init, signal: controller.signal, credentials: "include" });
+    } catch (error) {
+      throw new ConnectorHttpError(
+        `\u53EA\u8BFB\u8BF7\u6C42\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`,
+        0,
+        url
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  async function fetchJson(url, init = {}, fetchImpl = globalThis.fetch) {
+    const response = await request(fetchImpl, url, {
+      ...init,
+      headers: {
+        Accept: "application/json, text/plain, */*",
+        "X-Requested-With": "XMLHttpRequest",
+        ...init.headers ?? {}
+      }
+    });
+    if (!response.ok) {
+      throw new ConnectorHttpError(`\u6559\u52A1\u53EA\u8BFB\u63A5\u53E3\u8FD4\u56DE HTTP ${response.status}`, response.status, url);
+    }
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new ConnectorHttpError("\u6559\u52A1\u63A5\u53E3\u672A\u8FD4\u56DE JSON\uFF0C\u53EF\u80FD\u767B\u5F55\u6001\u5DF2\u5931\u6548\u6216\u9875\u9762\u7ED3\u6784\u5DF2\u53D8\u5316", response.status, url);
+    }
+  }
+  async function postForm(url, body, fetchImpl = globalThis.fetch) {
+    return fetchJson(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+      },
+      body: new URLSearchParams(body).toString()
+    }, fetchImpl);
+  }
+  function postFormText(url, body = "", fetchImpl = globalThis.fetch) {
+    return fetchJson(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+      },
+      body
+    }, fetchImpl);
+  }
+
+  // src/connectors/schools/whut-adapter.ts
+  var WHUT_API = "/jwapp/sys/homeapp/api/home";
+  var CURRENT_USER_URL = `${WHUT_API}/currentUser.do`;
+  var SECTIONS_URL = `${WHUT_API}/student/getSections.do`;
+  var SCHEDULE_URL = `${WHUT_API}/student/getMyScheduleDetail.do`;
+  var EXPECTED_WEEK_PERIODS = 13;
+  var WhutConnectorError = class extends Error {
+    code;
+    constructor(code, message) {
+      super(message);
+      this.name = "WhutConnectorError";
+      this.code = code;
+    }
+  };
+  function str(value) {
+    return value === null || value === void 0 ? "" : String(value).trim();
+  }
+  function integer(value) {
+    const parsed = Number(str(value));
+    return Number.isInteger(parsed) ? parsed : null;
+  }
+  function assertSuccess(response, operation) {
+    if (String(response.code) !== "0") {
+      throw new WhutConnectorError(
+        "invalid_api_response",
+        `${operation}\u5931\u8D25\uFF1A${response.msg || `code=${str(response.code) || "missing"}`}`
+      );
+    }
+    return response.datas;
+  }
+  function mapRequestError(error, operation) {
+    if (error instanceof WhutConnectorError) throw error;
+    if (error instanceof ConnectorHttpError) {
+      if (error.status === 401 || error.status === 403 || /未返回 JSON/.test(error.message)) {
+        throw new WhutConnectorError("login_expired", `${operation}\u5931\u8D25\uFF1A\u767B\u5F55\u72B6\u6001\u53EF\u80FD\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u5728\u5F53\u524D\u6D4F\u89C8\u5668\u91CD\u65B0\u767B\u5F55`);
+      }
+      throw new WhutConnectorError("current_user_unavailable", `${operation}\u5931\u8D25\uFF1A${error.message}`);
+    }
+    throw new WhutConnectorError(
+      "invalid_api_response",
+      `${operation}\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  function parseWhutTermCode(value) {
+    const match = value.trim().match(/^(\d{4})-(\d{4})-([1-3])$/);
+    if (!match) return null;
+    const startYear = Number(match[1]);
+    const endYear = Number(match[2]);
+    const termCode = match[3] ?? "1";
+    const ordinal = termCode === "1" ? "\u4E00" : termCode === "2" ? "\u4E8C" : "\u4E09";
+    return {
+      termId: value.trim(),
+      academicYear: `${match[1]}-${match[2]}`,
+      termCode,
+      startYear,
+      endYear,
+      termName: `${match[1]}-${match[2]} \u7B2C${ordinal}\u5B66\u671F`
+    };
+  }
+  function chineseWeekday(value) {
+    const index = "\u4E00\u4E8C\u4E09\u56DB\u4E94\u516D\u65E5\u5929".indexOf(value);
+    if (index < 0) return null;
+    return index === 7 ? 7 : index + 1;
+  }
+  function resolveWhutDisplayDate(raw, termCode, now) {
+    const full = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:\s*星期([一二三四五六日天]))?$/);
+    if (full) {
+      const value = `${full[1]}-${full[2]}-${full[3]}`;
+      const date = parseIsoDate(value);
+      const weekday = date.getUTCDay() === 0 ? 7 : date.getUTCDay();
+      if (full[4] && chineseWeekday(full[4]) !== weekday) {
+        throw new WhutConnectorError("term_unavailable", `currentUser \u65E5\u671F\u661F\u671F\u4E0D\u4E00\u81F4\uFF1A${raw}`);
+      }
+      return { date: value, weekday };
+    }
+    const match = raw.match(/(\d{1,2})月(\d{1,2})日.*?星期([一二三四五六日天])/);
+    if (!match) {
+      throw new WhutConnectorError("term_unavailable", `currentUser \u672A\u8FD4\u56DE\u53EF\u89E3\u6790\u7684\u6559\u5B66\u65E5\u671F\uFF1A${raw || "\u7A7A\u503C"}`);
+    }
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    const expectedWeekday = chineseWeekday(match[3] ?? "");
+    if (expectedWeekday === null) {
+      throw new WhutConnectorError("term_unavailable", `currentUser \u65E5\u671F\u7F3A\u5C11\u6709\u6548\u661F\u671F\uFF1A${raw}`);
+    }
+    const term = parseWhutTermCode(termCode);
+    const nowYear = now.getFullYear();
+    const candidates = [...new Set([
+      term?.startYear,
+      term?.endYear,
+      nowYear - 1,
+      nowYear,
+      nowYear + 1
+    ].filter((year) => Number.isInteger(year)))];
+    const valid = candidates.map((year) => {
+      const value = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      try {
+        const date = parseIsoDate(value);
+        const weekday = date.getUTCDay() === 0 ? 7 : date.getUTCDay();
+        return { value, weekday, distance: Math.abs(date.getTime() - now.getTime()) };
+      } catch {
+        return null;
+      }
+    }).filter((item) => item !== null).filter((item) => item.weekday === expectedWeekday).sort((left, right) => left.distance - right.distance);
+    const selected = valid[0];
+    if (!selected) {
+      throw new WhutConnectorError("term_unavailable", `\u65E0\u6CD5\u4E3A\u7F3A\u5931\u5E74\u4EFD\u7684\u65E5\u671F\u5339\u914D\u661F\u671F\uFF1A${raw}`);
+    }
+    return { date: selected.value, weekday: selected.weekday };
+  }
+  function resolveWhutTermContext(currentUser, now) {
+    const welcome = currentUser.welcomeInfo;
+    if (!welcome) {
+      throw new WhutConnectorError("term_unavailable", "currentUser.do \u672A\u8FD4\u56DE welcomeInfo\uFF0C\u65E0\u6CD5\u786E\u5B9A\u5F53\u524D\u5B66\u671F");
+    }
+    const termRaw = str(welcome.xnxqdm);
+    const term = parseWhutTermCode(termRaw);
+    if (!term) {
+      throw new WhutConnectorError("term_unavailable", `\u65E0\u6CD5\u8BC6\u522B\u5F53\u524D\u5B66\u671F\u4EE3\u7801\uFF1A${termRaw || "\u7A7A\u503C"}`);
+    }
+    const currentWeek = integer(welcome.classWeek);
+    if (currentWeek === null || currentWeek < 1) {
+      throw new WhutConnectorError("term_unavailable", `\u5F53\u524D\u6559\u5B66\u5468\u65E0\u6548\uFF1A${str(welcome.classWeek) || "\u7A7A\u503C"}`);
+    }
+    const displayDate = resolveWhutDisplayDate(str(welcome.date), termRaw, now);
+    const firstTeachingMonday = addDaysIso(
+      displayDate.date,
+      -((currentWeek - 1) * 7 + (displayDate.weekday - 1))
+    );
+    if (!isMonday(firstTeachingMonday)) {
+      throw new WhutConnectorError("term_unavailable", `\u63A8\u5BFC\u51FA\u7684\u7B2C 1 \u5468\u5468\u4E00\u4E0D\u662F\u5468\u4E00\uFF1A${firstTeachingMonday}`);
+    }
+    const warnings = [];
+    const termName = str(welcome.xnxqmc) || term.termName;
+    return {
+      termId: term.termId,
+      academicYear: term.academicYear,
+      termCode: term.termCode,
+      termName,
+      currentWeek,
+      currentDate: displayDate.date,
+      currentWeekday: displayDate.weekday,
+      firstTeachingMonday,
+      timezone: "Asia/Shanghai",
+      weekStartsOn: 1,
+      warnings
+    };
+  }
+  function formatWeekRanges(weeks) {
+    const sorted = [...new Set(weeks)].sort((left, right) => left - right);
+    if (sorted.length === 0) return "";
+    const ranges = [];
+    let start = sorted[0];
+    let end = start;
+    for (const week of sorted.slice(1)) {
+      if (week === end + 1) {
+        end = week;
+      } else {
+        ranges.push(start === end ? String(start) : `${start}-${end}`);
+        start = week;
+        end = week;
+      }
+    }
+    ranges.push(start === end ? String(start) : `${start}-${end}`);
+    return ranges.join(",");
+  }
+  function parseWhutWeekBitmap(value) {
+    const bitmap = str(value);
+    if (!bitmap) {
+      return { weeks: [], weekRule: "", error: "\u5468\u6B21\u4F4D\u56FE\u4E3A\u7A7A" };
+    }
+    if (!/^[01]+$/.test(bitmap)) {
+      return { weeks: [], weekRule: "", error: `\u5468\u6B21\u4F4D\u56FE\u5305\u542B\u975E 0/1 \u5B57\u7B26\uFF1A${bitmap}` };
+    }
+    const weeks = Array.from(bitmap).map((character, index) => character === "1" ? index + 1 : 0).filter((week) => week > 0);
+    if (weeks.length === 0) {
+      return { weeks: [], weekRule: "", error: "\u5468\u6B21\u4F4D\u56FE\u672A\u6807\u8BB0\u4EFB\u4F55\u6559\u5B66\u5468" };
+    }
+    return { weeks, weekRule: formatWeekRanges(weeks) };
+  }
+  function parseWhutSections(response, termCode, campusCode, effectiveFrom) {
+    const rows = assertSuccess(response, "getSections.do");
+    if (!Array.isArray(rows)) {
+      throw new WhutConnectorError("invalid_api_response", "getSections.do \u7684 datas \u4E0D\u662F\u6570\u7EC4");
+    }
+    const warnings = [];
+    const periods = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const [index, row] of rows.entries()) {
+      if (row.enable === false) continue;
+      const periodIndex = integer(row.code);
+      if (periodIndex === null || periodIndex < 1) {
+        warnings.push(`getSections.do \u7B2C ${index + 1} \u6761\u8282\u6B21\u7F3A\u5C11\u6709\u6548 code\uFF0C\u5DF2\u5FFD\u7565`);
+        continue;
+      }
+      if (seen.has(periodIndex)) {
+        warnings.push(`getSections.do \u8282\u6B21 ${periodIndex} \u91CD\u590D\uFF0C\u4FDD\u7559\u9996\u6761\u6709\u6548\u8BB0\u5F55`);
+        continue;
+      }
+      const start = str(row.startTime);
+      const end = str(row.endTime);
+      if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(end)) {
+        warnings.push(`getSections.do \u7B2C ${periodIndex} \u8282\u65F6\u95F4\u65E0\u6548\uFF1A${start || "\u7A7A"}\u2013${end || "\u7A7A"}`);
+        continue;
+      }
+      seen.add(periodIndex);
+      periods.push({ index: periodIndex, start, end, label: str(row.name) || `\u7B2C${periodIndex}\u8282` });
+    }
+    periods.sort((left, right) => left.index - right.index);
+    if (periods.length === 0) {
+      throw new WhutConnectorError("missing_period_schedule", "getSections.do \u672A\u8FD4\u56DE\u53EF\u7528\u8282\u6B21\u65F6\u95F4");
+    }
+    for (let index = 1; index <= EXPECTED_WEEK_PERIODS; index += 1) {
+      if (!seen.has(index)) warnings.push(`getSections.do \u7F3A\u5C11\u7B2C ${index} \u8282`);
+    }
+    return {
+      schedule: {
+        id: `whut-periods-${termCode}-${campusCode || "all"}`,
+        label: "WHUT getSections.do \u5B9E\u9645\u4F5C\u606F",
+        effectiveFrom,
+        periods
+      },
+      warnings
+    };
+  }
+  function inferCampus(room) {
+    const first = room.split("-")[0]?.trim();
+    return first && first !== room && /(?:校区|区|院)$/.test(first) ? first : void 0;
+  }
+  function roomFromDetails(row) {
+    const direct = str(row.placeName);
+    if (direct) return direct;
+    const detail = str(row.cellDetail?.[3]?.text || row.titleDetail?.[3]);
+    const parts = detail.split(",");
+    return parts.length >= 3 ? parts.slice(2).join(",").trim() : "";
+  }
+  function teacherFromDetails(row) {
+    return str(row.titleDetail?.[1]) || str(row.weeksAndTeachers) || str(row.cellDetail?.[2]?.text);
+  }
+  async function normalizeWhutScheduleDetail(data, descriptor4, term, schedule) {
+    const collections = {
+      arrangedList: Array.isArray(data.arrangedList) ? data.arrangedList : [],
+      notArrangeList: Array.isArray(data.notArrangeList) ? data.notArrangeList : [],
+      practiceList: Array.isArray(data.practiceList) ? data.practiceList : []
+    };
+    const warnings = [];
+    if (!Array.isArray(data.arrangedList)) warnings.push("getMyScheduleDetail.do \u7F3A\u5C11 arrangedList \u6570\u7EC4");
+    if (!Array.isArray(data.notArrangeList)) warnings.push("getMyScheduleDetail.do \u7F3A\u5C11 notArrangeList \u6570\u7EC4");
+    if (!Array.isArray(data.practiceList)) warnings.push("getMyScheduleDetail.do \u7F3A\u5C11 practiceList \u6570\u7EC4");
+    const periodIndexes = new Set(schedule.periods.map((period) => period.index));
+    const coursesByKey = /* @__PURE__ */ new Map();
+    const meetingIds = /* @__PURE__ */ new Set();
+    let parsedRows = 0;
+    let skippedRows = 0;
+    for (const [collectionName, rows] of Object.entries(collections)) {
+      if (rows.length === 0) continue;
+      let collectionParsed = 0;
+      for (const [index, row] of rows.entries()) {
+        const name = str(row.courseName) || str(row.titleDetail?.[0]);
+        const weekday = integer(row.dayOfWeek);
+        const startPeriod = integer(row.beginSection);
+        const endPeriod = integer(row.endSection) ?? startPeriod;
+        if (!name) {
+          warnings.push(`${collectionName} \u7B2C ${index + 1} \u6761\u7F3A\u5C11\u8BFE\u7A0B\u540D\u79F0\uFF0C\u5DF2\u8DF3\u8FC7`);
+          skippedRows += 1;
+          continue;
+        }
+        if (weekday === null || weekday < 1 || weekday > 7) {
+          warnings.push(`${collectionName} \u7B2C ${index + 1} \u6761\u8BFE\u7A0B ${name} \u7684\u661F\u671F\u65E0\u6548\uFF0C\u5DF2\u4FDD\u7559\u4E3A\u672A\u6392\u8BFE\u8B66\u544A`);
+          skippedRows += 1;
+          continue;
+        }
+        if (startPeriod === null || endPeriod === null || startPeriod < 1 || endPeriod < startPeriod) {
+          warnings.push(`${collectionName} \u7B2C ${index + 1} \u6761\u8BFE\u7A0B ${name} \u7684\u8282\u6B21\u8303\u56F4\u65E0\u6548\uFF0C\u5DF2\u4FDD\u7559\u4E3A\u672A\u6392\u8BFE\u8B66\u544A`);
+          skippedRows += 1;
+          continue;
+        }
+        if (!periodIndexes.has(startPeriod) || !periodIndexes.has(endPeriod)) {
+          warnings.push(
+            `${collectionName} \u7B2C ${index + 1} \u6761\u8BFE\u7A0B ${name} \u5F15\u7528\u4E86 getSections.do \u4E2D\u4E0D\u5B58\u5728\u7684\u8282\u6B21 ${startPeriod}-${endPeriod}\uFF0C\u5DF2\u8DF3\u8FC7`
+          );
+          skippedRows += 1;
+          continue;
+        }
+        const weekResult = parseWhutWeekBitmap(row.week);
+        if (weekResult.error) {
+          warnings.push(`${collectionName} \u7B2C ${index + 1} \u6761\u8BFE\u7A0B ${name}\uFF1A${weekResult.error}`);
+          skippedRows += 1;
+          continue;
+        }
+        const courseCode = str(row.courseCode);
+        const teachClassId = str(row.teachClassId);
+        const courseSerialNo = str(row.courseSerialNo);
+        const sourceCourseId = [courseCode, teachClassId].filter(Boolean).join("|");
+        if (!sourceCourseId) {
+          warnings.push(`${collectionName} \u7B2C ${index + 1} \u6761\u8BFE\u7A0B ${name} \u7F3A\u5C11 courseCode/teachClassId\uFF0C\u65E0\u6CD5\u751F\u6210\u7A33\u5B9A\u8BFE\u7A0B ID\uFF0C\u5DF2\u8DF3\u8FC7`);
+          skippedRows += 1;
+          continue;
+        }
+        const courseId = await makeCourseId({
+          adapterId: descriptor4.id,
+          sourceCourseId,
+          sourceRef: courseSerialNo || `${collectionName}:${index + 1}`,
+          fallbackOrdinal: parsedRows + skippedRows + 1
+        });
+        const sourceMeetingId = [
+          courseCode,
+          teachClassId,
+          courseSerialNo,
+          weekday,
+          startPeriod,
+          endPeriod,
+          str(row.week)
+        ].join("|");
+        const meetingId = await makeMeetingId({
+          courseId,
+          sourceMeetingId,
+          weekday,
+          startPeriod,
+          endPeriod,
+          weeks: weekResult.weeks
+        });
+        if (meetingIds.has(meetingId)) {
+          warnings.push(`${collectionName} \u7B2C ${index + 1} \u6761\u8BFE\u7A0B ${name} \u4E0E\u5176\u4ED6\u8BB0\u5F55\u751F\u6210\u76F8\u540C meeting ID\uFF0C\u5DF2\u8DF3\u8FC7\u91CD\u590D\u8BB0\u5F55`);
+          skippedRows += 1;
+          continue;
+        }
+        meetingIds.add(meetingId);
+        const room = roomFromDetails(row);
+        const teacher = teacherFromDetails(row);
+        const meeting = {
+          id: meetingId,
+          teacher,
+          room,
+          campus: inferCampus(room),
+          weekday,
+          startPeriod,
+          endPeriod,
+          weeks: weekResult.weeks,
+          weekRule: weekResult.weekRule,
+          note: collectionName === "practiceList" ? "\u5B9E\u8DF5\u8BFE\u8BB0\u5F55" : void 0,
+          source: {
+            adapterId: descriptor4.id,
+            adapterVersion: descriptor4.version,
+            schoolId: descriptor4.schoolId,
+            sourceCourseId,
+            sourceRef: courseSerialNo || `${collectionName}:${index + 1}`
+          }
+        };
+        const existing = coursesByKey.get(courseId);
+        if (existing) {
+          existing.meetings.push(meeting);
+        } else {
+          const credits = Number(str(row.credit));
+          coursesByKey.set(courseId, {
+            id: courseId,
+            name,
+            credits: Number.isFinite(credits) && credits > 0 ? credits : void 0,
+            teachingClass: str(row.teachClassName) || str(row.titleDetail?.[2]),
+            source: {
+              adapterId: descriptor4.id,
+              adapterVersion: descriptor4.version,
+              schoolId: descriptor4.schoolId,
+              sourceCourseId,
+              sourceRef: courseSerialNo || `${collectionName}:${index + 1}`
+            },
+            meetings: [meeting]
+          });
+        }
+        parsedRows += 1;
+        collectionParsed += 1;
+      }
+      if (collectionName !== "arrangedList" && rows.length > 0 && collectionParsed === 0) {
+        warnings.push(`${collectionName} \u5305\u542B ${rows.length} \u6761\u5F53\u524D\u65E0\u6CD5\u6392\u5165\u65E5\u5386\u7684\u8BB0\u5F55\uFF1B\u8BA1\u6570\u5DF2\u4FDD\u7559\uFF0C\u672A\u9759\u9ED8\u4E22\u5F03`);
+      }
+    }
+    return {
+      courses: [...coursesByKey.values()],
+      warnings: [...term.warnings, ...warnings],
+      parsedRows,
+      skippedRows,
+      rawCollectionCounts: {
+        arrangedList: collections.arrangedList.length,
+        notArrangeList: collections.notArrangeList.length,
+        practiceList: collections.practiceList.length
+      }
+    };
+  }
+  function whutDescriptor() {
+    return {
+      id: "whut-wisedu-jwapp",
+      version: "0.5.1",
+      vendor: "wisedu",
+      vendorLabel: "\u91D1\u667A Wisedu jwapp / WHUT",
+      schoolId: WHUT_PROFILE.id,
+      schoolName: WHUT_PROFILE.name,
+      platformVersion: WHUT_PROFILE.platformVersion,
+      status: WHUT_PROFILE.status,
+      capabilities: WHUT_PROFILE.capabilities,
+      verifiedDomains: WHUT_PROFILE.domains,
+      methods: ["api"],
+      lastVerifiedAt: WHUT_PROFILE.lastVerifiedAt,
+      evidenceUrls: WHUT_PROFILE.evidenceUrls,
+      limitations: WHUT_PROFILE.limitations
+    };
+  }
+  function createWhutAdapter() {
+    const descriptor4 = whutDescriptor();
+    return {
+      descriptor: descriptor4,
+      async detect(context) {
+        const host = context.url.hostname.toLowerCase();
+        const path = context.url.pathname;
+        const text = context.document.documentElement?.textContent ?? "";
+        const evidence = [];
+        if (host === "jwxt.whut.edu.cn" || host.endsWith(".whut.edu.cn")) evidence.push("whut.edu.cn \u57DF\u540D");
+        if (path.includes("/jwapp/")) evidence.push("/jwapp/ \u8DEF\u5F84");
+        if (text.includes("\u6211\u7684\u8BFE\u8868") || text.includes("\u6559\u5B66\u7BA1\u7406\u7CFB\u7EDF")) evidence.push("WHUT \u6559\u52A1\u9875\u9762\u7279\u5F81");
+        const confidence = evidence.length >= 2 ? 0.99 : evidence.length === 1 ? 0.82 : 0;
+        return {
+          detected: confidence > 0,
+          adapterId: descriptor4.id,
+          schoolId: descriptor4.schoolId,
+          confidence,
+          vendor: descriptor4.vendor,
+          evidence,
+          reason: confidence > 0 ? void 0 : "\u672A\u53D1\u73B0\u6B66\u6C49\u7406\u5DE5 WHUT jwapp \u7279\u5F81"
+        };
+      },
+      async extract(context, semester) {
+        const origin = context.url.origin;
+        let currentUser;
+        try {
+          currentUser = await fetchJson(
+            `${origin}${CURRENT_USER_URL}`,
+            { method: "GET", cache: "no-store" },
+            context.fetchImpl
+          );
+        } catch (error) {
+          mapRequestError(error, "currentUser.do");
+        }
+        const userData = assertSuccess(currentUser, "currentUser.do");
+        if (!userData || typeof userData !== "object") {
+          throw new WhutConnectorError("current_user_unavailable", "currentUser.do \u672A\u8FD4\u56DE\u7528\u6237\u6570\u636E");
+        }
+        const term = resolveWhutTermContext(userData, context.now());
+        const campusCode = semester.campus ?? "";
+        let sectionResponse;
+        try {
+          const sectionsUrl = new URL(`${origin}${SECTIONS_URL}`);
+          sectionsUrl.searchParams.set("termCode", term.termId);
+          sectionsUrl.searchParams.set("campusCode", campusCode);
+          sectionResponse = await fetchJson(
+            sectionsUrl.toString(),
+            { method: "GET", cache: "no-store" },
+            context.fetchImpl
+          );
+        } catch (error) {
+          mapRequestError(error, "getSections.do");
+        }
+        const parsedSections = parseWhutSections(sectionResponse, term.termId, campusCode, term.firstTeachingMonday);
+        const warnings = [...term.warnings, ...parsedSections.warnings];
+        if (semester.semesterStart && semester.semesterStart !== term.firstTeachingMonday) {
+          warnings.push(
+            `\u754C\u9762\u586B\u5199\u7B2C 1 \u5468\u5468\u4E00\u4E3A ${semester.semesterStart}\uFF0C\u6559\u52A1 currentUser.do \u63A8\u5BFC\u4E3A ${term.firstTeachingMonday}\uFF1B\u5DF2\u91C7\u7528\u6559\u52A1\u503C\u3002`
+          );
+        }
+        let detailResponse;
+        try {
+          detailResponse = await postForm(
+            `${origin}${SCHEDULE_URL}`,
+            {
+              termCode: term.termId,
+              campusCode,
+              type: "week",
+              week: String(term.currentWeek)
+            },
+            context.fetchImpl
+          );
+        } catch (error) {
+          mapRequestError(error, "getMyScheduleDetail.do");
+        }
+        const scheduleData = assertSuccess(detailResponse, "getMyScheduleDetail.do");
+        if (!scheduleData || typeof scheduleData !== "object") {
+          throw new WhutConnectorError("invalid_api_response", "getMyScheduleDetail.do \u672A\u8FD4\u56DE\u8BFE\u8868\u6570\u636E");
+        }
+        const rawTotal = (scheduleData.arrangedList?.length ?? 0) + (scheduleData.notArrangeList?.length ?? 0) + (scheduleData.practiceList?.length ?? 0);
+        if (rawTotal === 0) {
+          throw new WhutConnectorError("empty_timetable", "\u6559\u52A1\u8FD4\u56DE\u7A7A\u8BFE\u8868\uFF1B\u5F53\u524D\u5B66\u671F\u6216\u5B66\u751F\u8BFE\u8868\u53EF\u80FD\u5C1A\u672A\u751F\u6210");
+        }
+        const normalized = await normalizeWhutScheduleDetail(
+          scheduleData,
+          descriptor4,
+          term,
+          parsedSections.schedule
+        );
+        if (normalized.courses.length === 0) {
+          throw new WhutConnectorError(
+            "partial_extraction",
+            `\u6559\u52A1\u8FD4\u56DE ${rawTotal} \u6761\u8BB0\u5F55\uFF0C\u4F46\u6CA1\u6709\u53EF\u751F\u6210\u7684\u8BFE\u7A0B\u4E8B\u4EF6\u3002\u8BF7\u67E5\u770B\u89E3\u6790\u8B66\u544A\u5E76\u6838\u5BF9\u63A5\u53E3\u5B57\u6BB5\u3002`
+          );
+        }
+        const maxWeek = Math.max(1, ...normalized.courses.flatMap((course) => course.meetings.flatMap((meeting) => meeting.weeks)));
+        const draft = {
+          descriptor: descriptor4,
+          termSource: "adapter",
+          term: {
+            termId: term.termId,
+            academicYear: term.academicYear,
+            termCode: term.termCode,
+            termName: term.termName,
+            semesterStart: term.firstTeachingMonday,
+            teachingWeeks: maxWeek,
+            timezone: "Asia/Shanghai",
+            campus: campusCode || void 0,
+            periodSchedules: [parsedSections.schedule]
+          },
+          courses: normalized.courses,
+          overrides: [],
+          metadata: {
+            method: "api",
+            sourceUrl: `${context.url.origin}${context.url.pathname}`,
+            rawCount: rawTotal,
+            parsedCount: normalized.parsedRows,
+            skippedCount: normalized.skippedRows,
+            schoolId: descriptor4.schoolId,
+            schoolName: descriptor4.schoolName,
+            platform: descriptor4.vendorLabel,
+            userNote: [
+              `currentUser.do week=${term.currentWeek}`,
+              `collections=${normalized.rawCollectionCounts.arrangedList}/${normalized.rawCollectionCounts.notArrangeList}/${normalized.rawCollectionCounts.practiceList}`,
+              "\u53EA\u8BFB\u63D0\u53D6\uFF1B\u672A\u6301\u4E45\u5316 Cookie\u3001CSRF \u6216\u5B66\u53F7"
+            ].join("; ")
+          },
+          warnings: [
+            ...warnings,
+            ...normalized.warnings,
+            `getMyScheduleDetail.do: arrangedList=${normalized.rawCollectionCounts.arrangedList}, notArrangeList=${normalized.rawCollectionCounts.notArrangeList}, practiceList=${normalized.rawCollectionCounts.practiceList}`
+          ]
+        };
+        return {
+          draft,
+          rawRows: rawTotal,
+          parsedRows: normalized.parsedRows,
+          skippedRows: normalized.skippedRows,
+          evidence: [
+            "GET currentUser.do",
+            "GET getSections.do",
+            "POST getMyScheduleDetail.do form: termCode,campusCode,type=week,week",
+            `arrangedList=${normalized.rawCollectionCounts.arrangedList}`
+          ]
+        };
+      },
+      validate(timetable) {
+        return validateTimetableV2(timetable);
+      }
+    };
+  }
 
   // src/core/weeks.ts
   var WEEKDAY_MAP = {
@@ -687,73 +1318,8 @@
     return normalizeText(value).replace(/\s*\[\d+\]\s*/g, " ").replace(/\s{2,}/g, " ").trim();
   }
 
-  // src/connectors/sdk/http.ts
-  var ConnectorHttpError = class extends Error {
-    status;
-    url;
-    constructor(message, status, url) {
-      super(message);
-      this.name = "ConnectorHttpError";
-      this.status = status;
-      this.url = url;
-    }
-  };
-  async function request(fetchImpl, url, init, timeoutMs = 15e3) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      return await fetchImpl(url, { ...init, signal: controller.signal, credentials: "include" });
-    } catch (error) {
-      throw new ConnectorHttpError(
-        `\u53EA\u8BFB\u8BF7\u6C42\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`,
-        0,
-        url
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-  async function fetchJson(url, init = {}, fetchImpl = globalThis.fetch) {
-    const response = await request(fetchImpl, url, {
-      ...init,
-      headers: {
-        Accept: "application/json, text/plain, */*",
-        "X-Requested-With": "XMLHttpRequest",
-        ...init.headers ?? {}
-      }
-    });
-    if (!response.ok) {
-      throw new ConnectorHttpError(`\u6559\u52A1\u53EA\u8BFB\u63A5\u53E3\u8FD4\u56DE HTTP ${response.status}`, response.status, url);
-    }
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new ConnectorHttpError("\u6559\u52A1\u63A5\u53E3\u672A\u8FD4\u56DE JSON\uFF0C\u53EF\u80FD\u767B\u5F55\u6001\u5DF2\u5931\u6548\u6216\u9875\u9762\u7ED3\u6784\u5DF2\u53D8\u5316", response.status, url);
-    }
-  }
-  async function postForm(url, body, fetchImpl = globalThis.fetch) {
-    return fetchJson(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
-      },
-      body: new URLSearchParams(body).toString()
-    }, fetchImpl);
-  }
-  function postFormText(url, body = "", fetchImpl = globalThis.fetch) {
-    return fetchJson(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
-      },
-      body
-    }, fetchImpl);
-  }
-
   // src/connectors/vendors/wisedu.ts
-  var WISEDU_WHUT_ROLE_ID = "ef212c48c8f84be79acbd9d81b090f51";
-  var WHUT_SECTION_FALLBACK = {
+  var WISEDU_SECTION_FALLBACK = {
     1: 1,
     2: 2,
     3: 3,
@@ -768,32 +1334,28 @@
     15: 12,
     16: 13
   };
-  function str(value) {
+  function str2(value) {
     return value === null || value === void 0 ? "" : String(value).trim();
   }
   function num(value) {
-    const parsed = Number(str(value));
+    const parsed = Number(str2(value));
     return Number.isInteger(parsed) ? parsed : null;
   }
   function weeksFromBitmap(bitmap) {
-    return Array.from(bitmap).map((value, index) => value === "1" ? index + 1 : 0).filter((week) => week > 0 && week <= 30);
+    return Array.from(bitmap).map((value, index) => value === "1" ? index + 1 : 0).filter((week) => week > 0);
   }
-  function defaultDescriptor(profile) {
+  function defaultDescriptor() {
     return {
-      id: profile?.id === "whut" ? "whut-wisedu-jwapp" : "wisedu-jwapp",
-      version: "0.5.0",
+      id: "wisedu-jwapp",
+      version: "0.5.1",
       vendor: "wisedu",
-      vendorLabel: "\u91D1\u667A Wisedu jwapp",
-      schoolId: profile?.id,
-      schoolName: profile?.name,
-      platformVersion: profile?.platformVersion ?? "jwapp",
-      status: profile?.status ?? "experimental",
-      capabilities: profile?.capabilities ?? ["timetable", "semester", "periods", "classroom"],
-      verifiedDomains: profile?.domains ?? [],
+      vendorLabel: "\u91D1\u667A Wisedu jwapp\uFF08\u901A\u7528\uFF09",
+      platformVersion: "jwapp",
+      status: "experimental",
+      capabilities: ["timetable", "semester", "periods", "classroom"],
+      verifiedDomains: [],
       methods: ["api", "dom"],
-      lastVerifiedAt: profile?.lastVerifiedAt,
-      evidenceUrls: profile?.evidenceUrls,
-      limitations: profile?.limitations ?? ["\u901A\u7528\u91D1\u667A\u9002\u914D\u5668\u5C1A\u672A\u5B8C\u6210\u771F\u5B9E\u5B66\u6821\u7AEF\u5230\u7AEF\u9A8C\u6536\u3002"]
+      limitations: ["\u901A\u7528\u91D1\u667A\u9002\u914D\u5668\u4E0D\u80FD\u7EE7\u627F WHUT \u7684\u5B66\u6821\u7EA7\u9A8C\u8BC1\u7ED3\u8BBA\u3002"]
     };
   }
   function parseTermCode(value, semester) {
@@ -817,13 +1379,13 @@
     let physical = 0;
     for (const row of rows) {
       const dm = num(row.DM);
-      const mc = str(row.MC);
+      const mc = str2(row.MC);
       if (dm !== null && mc.includes("\u8282")) {
         physical += 1;
         map[dm] = physical;
       }
     }
-    return Object.keys(map).length >= 10 ? map : { ...WHUT_SECTION_FALLBACK };
+    return Object.keys(map).length >= 10 ? map : { ...WISEDU_SECTION_FALLBACK };
   }
   function periodScheduleFromRows(rows, sectionMap, semesterStart) {
     const periods = DEFAULT_PERIODS.map((period) => ({ ...period }));
@@ -834,13 +1396,13 @@
       const end = rawEnd !== null ? sectionMap[rawEnd] ?? rawEnd : start;
       if (start !== null && row.KSSJ) {
         const match = periods.find((period) => period.index === start);
-        if (match) match.start = str(row.KSSJ);
-        else if (row.JSSJ) periods.push({ index: start, start: str(row.KSSJ), end: str(row.JSSJ) });
+        if (match) match.start = str2(row.KSSJ);
+        else if (row.JSSJ) periods.push({ index: start, start: str2(row.KSSJ), end: str2(row.JSSJ) });
       }
       if (end !== null && row.JSSJ) {
         const match = periods.find((period) => period.index === end);
-        if (match) match.end = str(row.JSSJ);
-        else if (row.KSSJ) periods.push({ index: end, start: str(row.KSSJ), end: str(row.JSSJ) });
+        if (match) match.end = str2(row.JSSJ);
+        else if (row.KSSJ) periods.push({ index: end, start: str2(row.KSSJ), end: str2(row.JSSJ) });
       }
     }
     periods.sort((left, right) => left.index - right.index);
@@ -859,32 +1421,32 @@
     }
     return [];
   }
-  async function normalizeWiseduRows(rows, descriptor4, semester, sectionMap = WHUT_SECTION_FALLBACK) {
+  async function normalizeWiseduRows(rows, descriptor4, semester, sectionMap = WISEDU_SECTION_FALLBACK) {
     const warnings = [];
     const coursesByKey = /* @__PURE__ */ new Map();
     const seenMeetingIds = /* @__PURE__ */ new Set();
     for (const [index, row] of rows.entries()) {
-      const name = str(row.KCM || row.KCM_DISPLAY);
+      const name = str2(row.KCM || row.KCM_DISPLAY);
       const weekday = num(row.SKXQ);
       const rawStart = num(row.KSJC);
       const rawEnd = num(row.JSJC) ?? rawStart;
       if (!name || weekday === null || rawStart === null) continue;
       const startPeriod = sectionMap[rawStart] ?? rawStart;
       const endPeriod = rawEnd !== null ? sectionMap[rawEnd] ?? rawEnd : startPeriod;
-      const bitmapWeeks = weeksFromBitmap(str(row.SKZC));
-      const parsedWeeks = bitmapWeeks.length > 0 ? bitmapWeeks : parseWeeksDetailed(str(row.ZCMC)).weeks;
+      const bitmapWeeks = weeksFromBitmap(str2(row.SKZC));
+      const parsedWeeks = bitmapWeeks.length > 0 ? bitmapWeeks : parseWeeksDetailed(str2(row.ZCMC)).weeks;
       if (parsedWeeks.length === 0) {
         warnings.push(`\u7B2C ${index + 1} \u884C ${name} \u5468\u6B21\u4E3A\u7A7A\uFF0C\u5DF2\u8DF3\u8FC7`);
         continue;
       }
-      const sourceCourseId = [str(row.KCH), str(row.JXBID), str(row.KXH)].filter(Boolean).join("|") || str(row.KBID) || str(row.WID);
+      const sourceCourseId = [str2(row.KCH), str2(row.JXBID), str2(row.KXH)].filter(Boolean).join("|") || str2(row.KBID) || str2(row.WID);
       const courseId = await makeCourseId({
         adapterId: descriptor4.id,
         sourceCourseId,
-        sourceRef: str(row.KBID || row.WID) || `row:${index + 1}`,
+        sourceRef: str2(row.KBID || row.WID) || `row:${index + 1}`,
         fallbackOrdinal: index + 1
       });
-      const sourceMeetingId = [str(row.KBID), str(row.WID), str(row.SKZC), str(row.SKXQ), str(row.KSJC), str(row.JSJC)].filter(Boolean).join("|");
+      const sourceMeetingId = [str2(row.KBID), str2(row.WID), str2(row.SKZC), str2(row.SKXQ), str2(row.KSJC), str2(row.JSJC)].filter(Boolean).join("|");
       const meetingId = await makeMeetingId({
         courseId,
         sourceMeetingId,
@@ -897,41 +1459,41 @@
       seenMeetingIds.add(meetingId);
       const meeting = {
         id: meetingId,
-        teacher: str(row.SKJS),
-        room: str(row.JASMC),
-        campus: str(row.XXXQDM_DISPLAY || row.XXXQMC),
+        teacher: str2(row.SKJS),
+        room: str2(row.JASMC),
+        campus: str2(row.XXXQDM_DISPLAY || row.XXXQMC),
         weekday,
         startPeriod,
         endPeriod,
         weeks: parsedWeeks,
-        weekRule: str(row.ZCMC) || parsedWeeks.join(","),
-        startTime: str(row.KSSJ) || void 0,
-        endTime: str(row.JSSJ) || void 0,
+        weekRule: str2(row.ZCMC) || parsedWeeks.join(","),
+        startTime: str2(row.KSSJ) || void 0,
+        endTime: str2(row.JSSJ) || void 0,
         source: {
           adapterId: descriptor4.id,
           adapterVersion: descriptor4.version,
           schoolId: descriptor4.schoolId,
           sourceCourseId,
-          sourceRef: str(row.KBID || row.WID)
+          sourceRef: str2(row.KBID || row.WID)
         }
       };
       const existing = coursesByKey.get(courseId);
       if (existing) {
         existing.meetings.push(meeting);
       } else {
-        const credits = Number(str(row.XF));
+        const credits = Number(str2(row.XF));
         coursesByKey.set(courseId, {
           id: courseId,
           name,
-          category: str(row.KCXZDM_DISPLAY),
+          category: str2(row.KCXZDM_DISPLAY),
           credits: Number.isFinite(credits) && credits > 0 ? credits : void 0,
-          teachingClass: str(row.SKBJ),
+          teachingClass: str2(row.SKBJ),
           source: {
             adapterId: descriptor4.id,
             adapterVersion: descriptor4.version,
             schoolId: descriptor4.schoolId,
             sourceCourseId,
-            sourceRef: str(row.KBID || row.WID)
+            sourceRef: str2(row.KBID || row.WID)
           },
           meetings: [meeting]
         });
@@ -946,27 +1508,20 @@
       periodSchedule: periodScheduleFromRows(rows, sectionMap, semester.semesterStart)
     };
   }
-  function createWiseduAdapter(profile) {
-    const descriptor4 = defaultDescriptor(profile);
+  function createWiseduAdapter() {
+    const descriptor4 = defaultDescriptor();
     return {
       descriptor: descriptor4,
       async detect(context) {
-        const host = context.url.hostname;
         const path = context.url.pathname;
-        const isWhut = host.endsWith("whut.edu.cn");
-        if (profile?.id === "whut" && !isWhut) {
-          return { detected: false, adapterId: descriptor4.id, confidence: 0, vendor: "wisedu", evidence: [], reason: "\u975E\u6B66\u6C49\u7406\u5DE5\u57DF\u540D" };
-        }
         const evidence = [];
         if (path.includes("/jwapp/")) evidence.push("/jwapp/ \u8DEF\u5F84");
         const text = context.document.documentElement?.textContent ?? "";
         if (text.includes("EMAP") || text.includes("jwapp")) evidence.push("EMAP/jwapp \u9875\u9762\u7279\u5F81");
-        if (isWhut) evidence.push("whut.edu.cn \u57DF\u540D");
-        const confidence = evidence.length >= 2 ? 0.95 : evidence.length === 1 ? 0.75 : 0;
+        const confidence = evidence.length >= 2 ? 0.9 : evidence.length === 1 ? 0.68 : 0;
         return {
           detected: confidence > 0,
           adapterId: descriptor4.id,
-          schoolId: profile?.id,
           confidence,
           vendor: "wisedu",
           evidence,
@@ -977,13 +1532,6 @@
         const origin = context.url.origin;
         const warnings = [];
         let currentUser = {};
-        if (profile?.id === "whut") {
-          await fetchJson(
-            `${origin}/jwapp/sys/homeapp/api/home/changeAppRole.do?appRole=${WISEDU_WHUT_ROLE_ID}`,
-            { method: "POST" },
-            context.fetchImpl
-          ).catch(() => void 0);
-        }
         try {
           currentUser = await fetchJson(
             `${origin}/jwapp/sys/homeapp/api/home/currentUser.do`,
@@ -995,10 +1543,9 @@
         }
         const userDatas = currentUser.datas ?? {};
         const welcome = userDatas.welcomeInfo ?? {};
-        const termRaw = str(welcome.xnxqdm) || str(welcome.xnxq) || str(userDatas.xnxqdm) || semester.termCode || "unknown";
+        const termRaw = str2(welcome.xnxqdm) || str2(welcome.xnxq) || str2(userDatas.xnxqdm) || semester.termCode || "unknown";
         const termInfo = parseTermCode(termRaw, semester);
-        const xh = str(userDatas.userId || userDatas.xh || userDatas.username);
-        let sectionMap = { ...WHUT_SECTION_FALLBACK };
+        let sectionMap = { ...WISEDU_SECTION_FALLBACK };
         const sectionRows = [];
         try {
           const sectionResponse = await postFormText(
@@ -1009,32 +1556,14 @@
           sectionRows.push(...sectionResponse.datas?.jcjcx?.rows ?? []);
           sectionMap = sectionMapFromRows(sectionRows);
         } catch {
-          warnings.push("\u8282\u6B21\u6620\u5C04\u63A5\u53E3\u4E0D\u53EF\u7528\uFF0C\u4F7F\u7528 WHUT \u5DF2\u77E5 DM \u6620\u5C04\u4E0E\u7528\u6237\u786E\u8BA4\u4F5C\u606F");
+          warnings.push("\u901A\u7528\u91D1\u667A\u8282\u6B21\u6620\u5C04\u63A5\u53E3\u4E0D\u53EF\u7528\uFF0C\u4F7F\u7528\u5DF2\u77E5\u517C\u5BB9\u6620\u5C04\u4E0E\u7528\u6237\u786E\u8BA4\u4F5C\u606F");
         }
-        let rows = [];
-        if (profile?.id === "whut") {
-          const primary = await postForm(
-            `${origin}/jwapp/sys/wdkbby/modules/xskcb/cxxszhxqkb.do`,
-            { XNXQDM: termRaw },
-            context.fetchImpl
-          ).catch(() => ({ datas: {} }));
-          rows = extractRows(primary, ["cxxszhxqkb"]);
-          if (rows.length === 0) {
-            const fallback = await postForm(
-              `${origin}/jwapp/sys/kcbcxby/modules/xskcb/cxxskcb.do`,
-              { XH: xh, XNXQDM: termRaw },
-              context.fetchImpl
-            ).catch(() => ({ datas: {} }));
-            rows = extractRows(fallback, ["cxxskcb", "xskcb"]);
-          }
-        } else {
-          const response = await postForm(
-            `${origin}/jwapp/sys/wdkb/modules/xskcb/xskcb.do`,
-            { XNXQDM: termRaw },
-            context.fetchImpl
-          );
-          rows = extractRows(response, ["xskcb"]);
-        }
+        const response = await postForm(
+          `${origin}/jwapp/sys/wdkb/modules/xskcb/xskcb.do`,
+          { XNXQDM: termRaw },
+          context.fetchImpl
+        ).catch(() => ({ datas: {} }));
+        const rows = extractRows(response, ["xskcb", "cxxszhxqkb", "cxxskcb"]);
         if (rows.length === 0) {
           throw new Error("\u6559\u52A1\u8FD4\u56DE\u7A7A\u8BFE\u8868\u3002\u8BF7\u786E\u8BA4\u5DF2\u767B\u5F55\u3001\u5DF2\u8FDB\u5165\u5B66\u751F\u8BFE\u8868\u9875\uFF0C\u5E76\u9009\u62E9\u6B63\u786E\u5B66\u671F");
         }
@@ -1061,8 +1590,6 @@
             rawCount: rows.length,
             parsedCount,
             skippedCount: Math.max(0, rows.length - parsedCount),
-            schoolId: profile?.id,
-            schoolName: profile?.name,
             platform: descriptor4.vendorLabel,
             userNote: "\u53EA\u8BFB\u63D0\u53D6\uFF1B\u672A\u6301\u4E45\u5316 Cookie \u6216 CSRF \u53C2\u6570"
           },
@@ -1073,7 +1600,7 @@
           rawRows: rows.length,
           parsedRows: parsedCount,
           skippedRows: Math.max(0, rows.length - parsedCount),
-          evidence: ["jwapp", "student-timetable", profile?.id === "whut" ? "cxxszhxqkb" : "xskcb"]
+          evidence: ["jwapp", "student-timetable", "generic-wisedu"]
         };
       },
       validate(timetable) {
@@ -1622,7 +2149,7 @@
   }
 
   // src/connectors/vendors/zf.ts
-  function str2(value) {
+  function str3(value) {
     return value === null || value === void 0 ? "" : String(value).trim();
   }
   function zfDescriptor() {
@@ -1657,10 +2184,10 @@
     const warnings = [];
     let skipped = 0;
     for (const [index, row] of rows.entries()) {
-      const name = str2(row.kcmc);
-      const weekday = Number(str2(row.xqj));
-      const jcsRaw = str2(row.jcs || row.jc);
-      const zcd = str2(row.zcd);
+      const name = str3(row.kcmc);
+      const weekday = Number(str3(row.xqj));
+      const jcsRaw = str3(row.jcs || row.jc);
+      const zcd = str3(row.zcd);
       const period = parsePeriodRange(jcsRaw);
       const weekResult = parseWeeksDetailed(zcd);
       if (!name || !Number.isInteger(weekday) || weekday < 1 || weekday > 7 || !period || weekResult.weeks.length === 0) {
@@ -1668,14 +2195,14 @@
         warnings.push(`\u6B63\u65B9\u7B2C ${index + 1} \u884C\u5B57\u6BB5\u4E0D\u5B8C\u6574\uFF0C\u5DF2\u8DF3\u8FC7`);
         continue;
       }
-      const sourceCourseId = [str2(row.kch), str2(row.jxbmc), str2(row.kcb)].filter(Boolean).join("|") || `row:${index + 1}`;
+      const sourceCourseId = [str3(row.kch), str3(row.jxbmc), str3(row.kcb)].filter(Boolean).join("|") || `row:${index + 1}`;
       const courseId = await makeCourseId({
         adapterId: descriptor4.id,
         sourceCourseId,
         sourceRef: `row:${index + 1}`,
         fallbackOrdinal: index + 1
       });
-      const sourceMeetingId = [str2(row.kch), str2(row.jxbmc), str2(row.xqj), str2(row.jcs || row.jc), zcd].join("|");
+      const sourceMeetingId = [str3(row.kch), str3(row.jxbmc), str3(row.xqj), str3(row.jcs || row.jc), zcd].join("|");
       const meetingId = await makeMeetingId({
         courseId,
         sourceMeetingId,
@@ -1686,9 +2213,9 @@
       });
       const meeting = {
         id: meetingId,
-        teacher: str2(row.xm || row.jsxm),
-        room: str2(row.cdmc || row.cd_id),
-        campus: str2(row.xqmc),
+        teacher: str3(row.xm || row.jsxm),
+        room: str3(row.cdmc || row.cd_id),
+        campus: str3(row.xqmc),
         weekday,
         startPeriod: period.start,
         endPeriod: period.end,
@@ -1705,13 +2232,13 @@
       if (existing) {
         existing.meetings.push(meeting);
       } else {
-        const credits = Number(str2(row.xf));
+        const credits = Number(str3(row.xf));
         coursesByKey.set(courseId, {
           id: courseId,
           name,
-          category: str2(row.kcxzmc || row.kclbmc),
+          category: str3(row.kcxzmc || row.kclbmc),
           credits: Number.isFinite(credits) && credits > 0 ? credits : void 0,
-          teachingClass: str2(row.jxbmc),
+          teachingClass: str3(row.jxbmc),
           source: {
             adapterId: descriptor4.id,
             adapterVersion: descriptor4.version,
@@ -1776,7 +2303,7 @@
               termCode: term.xqm,
               termName: term.termName,
               semesterStart: semester.semesterStart,
-              teachingWeeks: semester.teachingWeeks ?? Math.max(1, ...rows.flatMap((row) => parseWeeksDetailed(str2(row.zcd)).weeks)),
+              teachingWeeks: semester.teachingWeeks ?? Math.max(1, ...rows.flatMap((row) => parseWeeksDetailed(str3(row.zcd)).weeks)),
               timezone: semester.timezone ?? "Asia/Shanghai",
               campus: semester.campus,
               periodSchedules: [
@@ -1971,7 +2498,7 @@
   };
   function createConnectorRegistry() {
     return [
-      createWiseduAdapter(WHUT_PROFILE),
+      createWhutAdapter(),
       createZfAdapter(),
       createQiangzhiAdapter(),
       createQingguoAdapter(),
@@ -2029,7 +2556,7 @@
 
   // src/connectors/page-runtime.ts
   window.__tericsConnectorRuntime = {
-    version: "0.5.0",
+    version: "0.5.0-rc.2",
     manifests: connectorManifests,
     schools: listSchoolProfiles,
     detect: async () => {

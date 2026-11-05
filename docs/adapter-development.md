@@ -96,9 +96,9 @@ Update:
 - `docs/connectors.md`
 - `docs/supported-schools.md`
 - `docs/support-matrix.md`
-- `docs/release-notes-v0.5.0-rc.1.md` or the next release notes
+- `docs/release-notes-v0.5.0-rc.2.md` or the next release notes
 - `THIRD_PARTY_NOTICES.md` when applicable
 
 ## 9. Status upgrade
 
-Do not mark `Verified` until a real account has completed the manual-login end-to-end flow and the extracted courses were checked against the live website. Record the date, platform variant, permissions and evidence. A fixture-only implementation is at most `Fixture-tested`; the current adapters remain `Experimental`.
+Do not mark `Verified` until a real account has completed the manual-login end-to-end flow and the extracted courses were checked against the live website. Record the date, platform variant, permissions and evidence. A fixture-only implementation is at most `Fixture-tested`. WHUT is the only current school-level `Verified` adapter; generic vendor and DOM adapters remain `Experimental`.

@@ -17,11 +17,8 @@ import type {
 } from "../../v2/types";
 import { validateTimetableV2 } from "../../v2/validate";
 import { fetchJson, postForm, postFormText } from "../sdk/http";
-import type { SchoolProfile } from "../sdk/schools";
 
-export const WISEDU_WHUT_ROLE_ID = "ef212c48c8f84be79acbd9d81b090f51";
-
-export const WHUT_SECTION_FALLBACK: Record<number, number> = {
+export const WISEDU_SECTION_FALLBACK: Record<number, number> = {
   1: 1,
   2: 2,
   3: 3,
@@ -101,25 +98,21 @@ function num(value: unknown): number | null {
 export function weeksFromBitmap(bitmap: string): number[] {
   return Array.from(bitmap)
     .map((value, index) => (value === "1" ? index + 1 : 0))
-    .filter((week) => week > 0 && week <= 30);
+    .filter((week) => week > 0);
 }
 
-function defaultDescriptor(profile?: SchoolProfile): ConnectorDescriptor {
+function defaultDescriptor(): ConnectorDescriptor {
   return {
-    id: profile?.id === "whut" ? "whut-wisedu-jwapp" : "wisedu-jwapp",
-    version: "0.5.0",
+    id: "wisedu-jwapp",
+    version: "0.5.1",
     vendor: "wisedu",
-    vendorLabel: "金智 Wisedu jwapp",
-    schoolId: profile?.id,
-    schoolName: profile?.name,
-    platformVersion: profile?.platformVersion ?? "jwapp",
-    status: profile?.status ?? "experimental",
-    capabilities: profile?.capabilities ?? ["timetable", "semester", "periods", "classroom"],
-    verifiedDomains: profile?.domains ?? [],
+    vendorLabel: "金智 Wisedu jwapp（通用）",
+    platformVersion: "jwapp",
+    status: "experimental",
+    capabilities: ["timetable", "semester", "periods", "classroom"],
+    verifiedDomains: [],
     methods: ["api", "dom"],
-    lastVerifiedAt: profile?.lastVerifiedAt,
-    evidenceUrls: profile?.evidenceUrls,
-    limitations: profile?.limitations ?? ["通用金智适配器尚未完成真实学校端到端验收。"],
+    limitations: ["通用金智适配器不能继承 WHUT 的学校级验证结论。"],
   };
 }
 
@@ -151,7 +144,7 @@ function sectionMapFromRows(rows: SectionMapRow[]): Record<number, number> {
       map[dm] = physical;
     }
   }
-  return Object.keys(map).length >= 10 ? map : { ...WHUT_SECTION_FALLBACK };
+  return Object.keys(map).length >= 10 ? map : { ...WISEDU_SECTION_FALLBACK };
 }
 
 function periodScheduleFromRows(rows: WiseduRow[], sectionMap: Record<number, number>, semesterStart: string): PeriodSchedule {
@@ -194,7 +187,7 @@ export async function normalizeWiseduRows(
   rows: WiseduRow[],
   descriptor: ConnectorDescriptor,
   semester: SemesterSelection,
-  sectionMap: Record<number, number> = WHUT_SECTION_FALLBACK,
+  sectionMap: Record<number, number> = WISEDU_SECTION_FALLBACK,
 ): Promise<{ courses: CourseV2[]; warnings: string[]; periodSchedule: PeriodSchedule }> {
   const warnings: string[] = [];
   const coursesByKey = new Map<string, CourseV2>();
@@ -283,27 +276,20 @@ export async function normalizeWiseduRows(
   };
 }
 
-export function createWiseduAdapter(profile?: SchoolProfile): SISAdapter {
-  const descriptor = defaultDescriptor(profile);
+export function createWiseduAdapter(): SISAdapter {
+  const descriptor = defaultDescriptor();
   return {
     descriptor,
     async detect(context: ConnectorContext): Promise<DetectionResult> {
-      const host = context.url.hostname;
       const path = context.url.pathname;
-      const isWhut = host.endsWith("whut.edu.cn");
-      if (profile?.id === "whut" && !isWhut) {
-        return { detected: false, adapterId: descriptor.id, confidence: 0, vendor: "wisedu", evidence: [], reason: "非武汉理工域名" };
-      }
       const evidence: string[] = [];
       if (path.includes("/jwapp/")) evidence.push("/jwapp/ 路径");
       const text = context.document.documentElement?.textContent ?? "";
       if (text.includes("EMAP") || text.includes("jwapp")) evidence.push("EMAP/jwapp 页面特征");
-      if (isWhut) evidence.push("whut.edu.cn 域名");
-      const confidence = evidence.length >= 2 ? 0.95 : evidence.length === 1 ? 0.75 : 0;
+      const confidence = evidence.length >= 2 ? 0.9 : evidence.length === 1 ? 0.68 : 0;
       return {
         detected: confidence > 0,
         adapterId: descriptor.id,
-        schoolId: profile?.id,
         confidence,
         vendor: "wisedu",
         evidence,
@@ -314,13 +300,6 @@ export function createWiseduAdapter(profile?: SchoolProfile): SISAdapter {
       const origin = context.url.origin;
       const warnings: string[] = [];
       let currentUser: CurrentUserResponse = {};
-      if (profile?.id === "whut") {
-        await fetchJson<unknown>(
-          `${origin}/jwapp/sys/homeapp/api/home/changeAppRole.do?appRole=${WISEDU_WHUT_ROLE_ID}`,
-          { method: "POST" },
-          context.fetchImpl,
-        ).catch(() => undefined);
-      }
       try {
         currentUser = await fetchJson<CurrentUserResponse>(
           `${origin}/jwapp/sys/homeapp/api/home/currentUser.do`,
@@ -339,8 +318,7 @@ export function createWiseduAdapter(profile?: SchoolProfile): SISAdapter {
         semester.termCode ||
         "unknown";
       const termInfo = parseTermCode(termRaw, semester);
-      const xh = str(userDatas.userId || userDatas.xh || userDatas.username);
-      let sectionMap: Record<number, number> = { ...WHUT_SECTION_FALLBACK };
+      let sectionMap: Record<number, number> = { ...WISEDU_SECTION_FALLBACK };
       const sectionRows: SectionMapRow[] = [];
       try {
         const sectionResponse = await postFormText<{ datas?: { jcjcx?: { rows?: SectionMapRow[] } } }>(
@@ -351,33 +329,15 @@ export function createWiseduAdapter(profile?: SchoolProfile): SISAdapter {
         sectionRows.push(...(sectionResponse.datas?.jcjcx?.rows ?? []));
         sectionMap = sectionMapFromRows(sectionRows);
       } catch {
-        warnings.push("节次映射接口不可用，使用 WHUT 已知 DM 映射与用户确认作息");
+        warnings.push("通用金智节次映射接口不可用，使用已知兼容映射与用户确认作息");
       }
 
-      let rows: WiseduRow[] = [];
-      if (profile?.id === "whut") {
-        const primary = await postForm<JwAppRowsResponse>(
-          `${origin}/jwapp/sys/wdkbby/modules/xskcb/cxxszhxqkb.do`,
-          { XNXQDM: termRaw },
-          context.fetchImpl,
-        ).catch(() => ({ datas: {} }));
-        rows = extractRows(primary, ["cxxszhxqkb"]);
-        if (rows.length === 0) {
-          const fallback = await postForm<JwAppRowsResponse>(
-            `${origin}/jwapp/sys/kcbcxby/modules/xskcb/cxxskcb.do`,
-            { XH: xh, XNXQDM: termRaw },
-            context.fetchImpl,
-          ).catch(() => ({ datas: {} }));
-          rows = extractRows(fallback, ["cxxskcb", "xskcb"]);
-        }
-      } else {
-        const response = await postForm<JwAppRowsResponse>(
-          `${origin}/jwapp/sys/wdkb/modules/xskcb/xskcb.do`,
-          { XNXQDM: termRaw },
-          context.fetchImpl,
-        );
-        rows = extractRows(response, ["xskcb"]);
-      }
+      const response = await postForm<JwAppRowsResponse>(
+        `${origin}/jwapp/sys/wdkb/modules/xskcb/xskcb.do`,
+        { XNXQDM: termRaw },
+        context.fetchImpl,
+      ).catch(() => ({ datas: {} }));
+      const rows = extractRows(response, ["xskcb", "cxxszhxqkb", "cxxskcb"]);
       if (rows.length === 0) {
         throw new Error("教务返回空课表。请确认已登录、已进入学生课表页，并选择正确学期");
       }
@@ -404,8 +364,6 @@ export function createWiseduAdapter(profile?: SchoolProfile): SISAdapter {
           rawCount: rows.length,
           parsedCount,
           skippedCount: Math.max(0, rows.length - parsedCount),
-          schoolId: profile?.id,
-          schoolName: profile?.name,
           platform: descriptor.vendorLabel,
           userNote: "只读提取；未持久化 Cookie 或 CSRF 参数",
         },
@@ -416,7 +374,7 @@ export function createWiseduAdapter(profile?: SchoolProfile): SISAdapter {
         rawRows: rows.length,
         parsedRows: parsedCount,
         skippedRows: Math.max(0, rows.length - parsedCount),
-        evidence: ["jwapp", "student-timetable", profile?.id === "whut" ? "cxxszhxqkb" : "xskcb"],
+        evidence: ["jwapp", "student-timetable", "generic-wisedu"],
       };
     },
     validate(timetable: NormalizedTimetableV2): ValidationReport {

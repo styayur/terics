@@ -1,4 +1,4 @@
-export const APP_VERSION = "0.5.0-rc.1";
+export const APP_VERSION = "0.5.0-rc.2";
 export const TIMEZONE = "Asia/Shanghai" as const;
 export const DEFAULT_MAX_WEEK = 30;
 
@@ -77,6 +77,12 @@ export interface CalendarEvent {
   startDateTime: string;
   endDateTime: string;
   weekRule: string;
+  courseId?: string;
+  meetingId?: string;
+  campus?: string;
+  sourceAdapterId?: string;
+  sourceSchoolId?: string;
+  sourceTermId?: string;
 }
 
 export interface Conflict {

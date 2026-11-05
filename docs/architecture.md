@@ -75,3 +75,26 @@ Display title, teacher and room are not UID inputs. Internal duplicate events ar
 ## Offline guarantee
 
 ICS generation never requires Google OAuth. Web/Python file parsing and `.terics.json` import remain fully local and available when Google integration is disabled or unconfigured.
+
+
+## v0.5.0-rc.2 closeout additions
+
+### WHUT 2026 live adapter
+
+- School adapter is separate from the generic Wisedu vendor adapter.
+- `currentUser.do` supplies term code, current teaching week and registrar date.
+- The date resolver derives and validates the first teaching Monday with date-only arithmetic.
+- `getSections.do` supplies the actual 13-period schedule; fallback defaults are not silently substituted for a successful WHUT response.
+- `getMyScheduleDetail.do` is a form POST with `termCode`, `campusCode`, `type=week` and `week`.
+- Variable-length bitmaps preserve sparse, alternating and non-contiguous weeks without a fixed upper truncation.
+- `arrangedList`, `notArrangeList` and `practiceList` are counted separately; unsupported/partial records become explicit warnings.
+
+### Timetable-first interface
+
+- Web uses a teaching-week ruler and seven-day grid as the primary preview.
+- Extension uses a compact week ruler and agenda.
+- Python Tkinter uses week buttons and a Canvas timetable preview.
+- Source adapter, term, extraction time and validation are presented as a provenance ledger rather than generic metric cards.
+- Cancellation, reschedule, makeup and conflict states use geometry/text in addition to color.
+
+The shared schema remains 2.0. WHUT verification is school- and term-specific; the generic Wisedu adapter remains Experimental.

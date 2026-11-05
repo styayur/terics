@@ -33,7 +33,7 @@
 - A compromised school origin could return malicious content; parsers do not execute content but could produce incorrect fields.
 - No dedicated XLSX decompression-bomb quota exists beyond the compressed file-size cap.
 - Direct Google sync cannot be accepted as validated until real OAuth/account testing is completed.
-- Experimental school adapters may break when the SIS is updated.
+- School adapters may break when the SIS is updated. WHUT is verified only for the observed 2026-2027-1 layout; other adapters remain Experimental.
 - GitHub Pages OAuth availability depends on a correctly configured Google client and authorized `https://styayur.github.io` origin; absence of that configuration safely disables direct Web sync.
 
 ## Out of scope

@@ -20,6 +20,7 @@ The desktop app still accepts HTML, CSV/TSV, XLSX and `.terics.json`.
 
 - Legacy HTML/CSV/XLSX conversion uses the original v0.1.0 pipeline.
 - `.terics.json` and connector output use the v2 course/meeting/override engine.
+- The preview includes a teaching-week ruler, Canvas timetable grid and detailed occurrence table.
 - Export produces a standards-compliant ICS in both cases.
 
 ## Direct SIS extraction
@@ -31,6 +32,8 @@ The desktop app still accepts HTML, CSV/TSV, XLSX and `.terics.json`.
 5. Return to terics and click **从浏览器提取**.
 
 The browser uses a dedicated persistent profile under `%LOCALAPPDATA%\terics\browser-profile`. It never copies the user’s daily Chrome/Edge profile. It does not read cookies from disk. Same-origin page requests run inside the authenticated browser context only after the user triggers extraction.
+
+WHUT `2026-2027-1` has been accepted against a real page in the extension/browser flow. The desktop application uses the same bundled connector runtime and schema 2.0 normalization.
 
 ## Clear login state
 

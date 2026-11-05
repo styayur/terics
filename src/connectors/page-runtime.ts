@@ -14,7 +14,7 @@ declare global {
 }
 
 window.__tericsConnectorRuntime = {
-  version: "0.5.0",
+  version: "0.5.0-rc.2",
   manifests: connectorManifests,
   schools: listSchoolProfiles,
   detect: async () => {

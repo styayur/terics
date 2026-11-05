@@ -1,0 +1,192 @@
+{
+  "msg": null,
+  "code": "0",
+  "datas": {
+    "arrangedList": [
+      {
+        "week": "000000001000000000000000000000",
+        "endTime": null,
+        "color": "#1677ff",
+        "courseName": "数据结构基础",
+        "courseCode": "SYN101",
+        "credit": "3",
+        "beginSection": 6,
+        "beginTime": null,
+        "endSection": 9,
+        "courseSerialNo": "SYN-SERIAL-01",
+        "teachClassName": "计算科学2501(30人)",
+        "teachingTarget": "测试专业2501-02",
+        "weeksAndTeachers": "测试教师甲",
+        "placeName": "示例校区-虚构教学楼-A002",
+        "teachClassId": "20261-T001",
+        "cellDetail": [
+          {
+            "color": null,
+            "text": "数据结构基础"
+          },
+          {
+            "color": null,
+            "text": "20261-T001(30人)"
+          },
+          {
+            "color": null,
+            "text": "测试教师甲"
+          },
+          {
+            "color": null,
+            "text": "[9周],第6-9节,示例校区-虚构教学楼-A002"
+          }
+        ],
+        "titleDetail": [
+          "数据结构基础",
+          "测试教师甲",
+          "20261-T001(30人)",
+          "[9周],第6-9节,示例校区-虚构教学楼-A002"
+        ],
+        "byCode": "test",
+        "tags": [],
+        "multiCourse": null,
+        "dayOfWeek": 5
+      },
+      {
+        "week": "111111111111111111000000000000",
+        "endTime": null,
+        "color": "#1677ff",
+        "courseName": "大学物理导论",
+        "courseCode": "SYN102",
+        "credit": "4",
+        "beginSection": 1,
+        "beginTime": null,
+        "endSection": 2,
+        "courseSerialNo": "SYN-SERIAL-02",
+        "teachClassName": "计算科学2501(30人)",
+        "teachingTarget": "测试专业2501-02",
+        "weeksAndTeachers": "测试教师乙",
+        "placeName": "示例校区-虚构教学楼-A012",
+        "teachClassId": "20261-T002",
+        "cellDetail": [
+          {
+            "color": null,
+            "text": "大学物理导论"
+          },
+          {
+            "color": null,
+            "text": "20261-T002(30人)"
+          },
+          {
+            "color": null,
+            "text": "测试教师乙"
+          },
+          {
+            "color": null,
+            "text": "[1-18周],第1-2节,示例校区-虚构教学楼-A012"
+          }
+        ],
+        "titleDetail": [
+          "大学物理导论",
+          "测试教师乙",
+          "20261-T002(30人)",
+          "[1-18周],第1-2节,示例校区-虚构教学楼-A012"
+        ],
+        "byCode": "test",
+        "tags": [],
+        "multiCourse": null,
+        "dayOfWeek": 3
+      },
+      {
+        "week": "000001111111111111000000000000",
+        "endTime": null,
+        "color": "#1677ff",
+        "courseName": "大学物理导论",
+        "courseCode": "SYN102",
+        "credit": "4",
+        "beginSection": 3,
+        "beginTime": null,
+        "endSection": 5,
+        "courseSerialNo": "SYN-SERIAL-02",
+        "teachClassName": "计算科学2501(30人)",
+        "teachingTarget": "测试专业2501-02",
+        "weeksAndTeachers": "测试教师乙",
+        "placeName": "示例校区-虚构教学楼-A002",
+        "teachClassId": "20261-T002",
+        "cellDetail": [
+          {
+            "color": null,
+            "text": "大学物理导论"
+          },
+          {
+            "color": null,
+            "text": "20261-T002(30人)"
+          },
+          {
+            "color": null,
+            "text": "测试教师乙"
+          },
+          {
+            "color": null,
+            "text": "[6-18周],第3-5节,示例校区-虚构教学楼-A002"
+          }
+        ],
+        "titleDetail": [
+          "大学物理导论",
+          "测试教师乙",
+          "20261-T002(30人)",
+          "[6-18周],第3-5节,示例校区-虚构教学楼-A002"
+        ],
+        "byCode": "test",
+        "tags": [],
+        "multiCourse": null,
+        "dayOfWeek": 5
+      },
+      {
+        "week": "000000011111000000000000000000",
+        "endTime": null,
+        "color": "#1677ff",
+        "courseName": "地理信息实践",
+        "courseCode": "SYN203",
+        "credit": "2",
+        "beginSection": 11,
+        "beginTime": null,
+        "endSection": 13,
+        "courseSerialNo": "SYN-SERIAL-03",
+        "teachClassName": "地理信息2501(30人)",
+        "teachingTarget": "测试专业2501-02",
+        "weeksAndTeachers": "测试教师丙",
+        "placeName": "示例校区-虚构教学楼-A003",
+        "teachClassId": "20261-T003",
+        "cellDetail": [
+          {
+            "color": null,
+            "text": "地理信息实践"
+          },
+          {
+            "color": null,
+            "text": "20261-T003(30人)"
+          },
+          {
+            "color": null,
+            "text": "测试教师丙"
+          },
+          {
+            "color": null,
+            "text": "[8-12周],第11-13节,示例校区-虚构教学楼-A003"
+          }
+        ],
+        "titleDetail": [
+          "地理信息实践",
+          "测试教师丙",
+          "20261-T003(30人)",
+          "[8-12周],第11-13节,示例校区-虚构教学楼-A003"
+        ],
+        "byCode": "test",
+        "tags": [],
+        "multiCourse": null,
+        "dayOfWeek": 6
+      }
+    ],
+    "notArrangeList": [],
+    "practiceList": [],
+    "code": "TEST-WHUT-0001",
+    "name": "测试学生"
+  }
+}

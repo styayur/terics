@@ -8,7 +8,7 @@
   </head>
   <body>
     <header class="top">
-      <div class="brand">≡ TERICS <span>v0.5.0-rc.1</span></div>
+      <div class="brand">≡ TERICS <span>v0.5.0-rc.2</span></div>
       <div class="local">LOCAL / 0 UPLOAD</div>
     </header>
     <main>
@@ -66,6 +66,16 @@
           <div><span>EVENTS</span><strong id="event-count">0</strong></div>
           <div><span>CONFLICTS</span><strong id="conflict-count">0</strong></div>
         </div>
+        <div class="provenance-line" id="provenance-line">—</div>
+        <section class="week-board" aria-label="本周课程预览">
+          <div class="week-board-head">
+            <span>TEACHING WEEK</span>
+            <strong id="week-label">—</strong>
+          </div>
+          <div class="week-ruler" id="week-ruler" role="tablist" aria-label="选择教学周"></div>
+          <div class="week-agenda" id="week-agenda"></div>
+          <div class="week-empty" id="week-empty" hidden>本周没有课程安排。</div>
+        </section>
         <div class="warning-list" id="warning-list"></div>
         <label class="ack" id="ack-row" hidden>
           <input id="conflict-ack" type="checkbox" />

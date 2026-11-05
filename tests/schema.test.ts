@@ -26,6 +26,10 @@ describe("shared timetable schema", () => {
       const example = JSON.parse(readFileSync(resolve(file), "utf8"));
       expect(validate(example), `${file}: ${JSON.stringify(validate.errors)}`).toBe(true);
     }
+    const longWeeks = JSON.parse(readFileSync(resolve("fixtures/exchange/whut-real-shape.terics.json"), "utf8"));
+    longWeeks.term.teachingWeeks = 35;
+    longWeeks.courses[0].meetings[0].weeks = [35];
+    expect(validate(longWeeks), JSON.stringify(validate.errors)).toBe(true);
     const invalid = JSON.parse(readFileSync(resolve("fixtures/exchange/terics-example.terics.json"), "utf8"));
     invalid.access_token = "secret";
     expect(validate(invalid)).toBe(false);

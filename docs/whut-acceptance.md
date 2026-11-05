@@ -1,40 +1,107 @@
-# WHUT Acceptance Record
+# WHUT Live Acceptance — 2026-11-06
 
-Date: 2026-11-05  
-School: 武汉理工大学  
-Target: undergraduate student timetable  
-Entry: `https://jwxt.whut.edu.cn/jwapp/sys/homeapp/index.do?forceCas=1`
+## Scope
 
-## Completed
+- Institution: Wuhan University of Technology
+- Term: `2026-2027-1`
+- Student role: current “学生组（在校）” context
+- Browser: user-controlled authenticated in-app browser session
+- Method: read-only same-origin requests and visible timetable comparison
+- Adapter: `whut-wisedu-jwapp`
 
-- Entry point returned HTTP 302 to `zhlgd.whut.edu.cn` unified authentication.
-- Independent Playwright worker and dedicated profile started successfully in local Windows tests.
-- Shared Connector runtime injects into a page and returns schema 2.0 output.
-- Fictional Wisedu fixture covers:
-  - `cxxszhxqkb` response;
-  - `SKZC` bitmap weeks;
-  - DM/KSJC/JSJC section mapping;
-  - current-user semester;
-  - jcjx section map;
-  - stable course/meeting IDs.
-- Extension package loaded unpacked in Microsoft Edge with `activeTab`, `scripting`, `storage`.
-- Web/Python v2 event parity includes a WHUT-style exchange fixture.
+No student name, student ID, cookie, token, CSRF value or real timetable was committed. Raw authenticated response copies remain local-only under the ignored `docs/jounal/` directory.
 
-## Blocked
+## Request evidence
 
-No user-authorized WHUT account or MFA interaction was available to the agent. The agent did not request credentials, read Cookie databases, bypass authentication, or fabricate a live result.
+| Operation | Method | URL | Parameters |
+|---|---|---|---|
+| Current user / term | GET | `/jwapp/sys/homeapp/api/home/currentUser.do` | none |
+| Period schedule | GET | `/jwapp/sys/homeapp/api/home/student/getSections.do` | `termCode=2026-2027-1`, `campusCode=` |
+| Timetable detail | POST form | `/jwapp/sys/homeapp/api/home/student/getMyScheduleDetail.do` | `termCode=2026-2027-1`, `campusCode=`, `type=week`, `week=9` |
 
-## Required manual acceptance
+The form request uses `application/x-www-form-urlencoded; charset=UTF-8`. No `changeAppRole.do` request is made.
 
-1. Open the app’s independent Playwright browser.
-2. Complete WHUT unified authentication manually.
-3. Navigate to the personal timetable.
-4. Trigger extraction.
-5. Compare course count, names, teaching classes, weeks, sections, teachers, rooms and any cancellations/reschedules with the live SIS.
-6. Export `.terics.json`, reopen it in the Web app and compare ICS events.
-7. Record the platform variant and date in `docs/support-matrix.md`.
-8. Only then consider upgrading WHUT from `Experimental` to `Verified`.
+## Sanitized response shape
 
-## Current status
+```text
+currentUser.datas
+├── userName / userId                  [discarded by normalizer]
+├── userGroups
+└── welcomeInfo
+    ├── xnxqdm                         "2026-2027-1"
+    ├── xnxqmc
+    ├── classWeek                      9
+    └── date                           registrar date text
 
-**Experimental** — code and fixtures tested; real-account end-to-end acceptance outstanding.
+getSections.datas[]
+└── { enable, sort, code, name, startTime, endTime, campus, ... }
+
+getMyScheduleDetail.datas
+├── arrangedList[]
+│   ├── courseName / courseCode / credit / courseSerialNo
+│   ├── teachClassName / teachingTarget / teachClassId
+│   ├── weeksAndTeachers / titleDetail / cellDetail
+│   ├── placeName / dayOfWeek
+│   ├── beginSection / endSection / beginTime / endTime
+│   └── week                          variable-length 0/1 bitmap
+├── notArrangeList[]
+├── practiceList[]
+└── code / name                        [not persisted as identity]
+```
+
+## Live extraction result
+
+- `arrangedList`: 42
+- `notArrangeList`: 0
+- `practiceList`: 0
+- Normalized courses: 15
+- Normalized meetings: 42
+- Weekly instances: 242
+- Maximum observed teaching week: 18
+- Conflicts: 0
+- Skipped records: 0
+- Generated ICS events: 242
+- Unique ICS UIDs: 242
+- ICS independent parse: `ical.js` and Python `icalendar`
+- Timezone: `Asia/Shanghai`
+
+## Date and period verification
+
+- `currentUser.do` reported class week 9 and Friday, 2026-11-06.
+- Derived first teaching Monday: **2026-09-07**.
+- Week 9 Monday: **2026-11-02**.
+- Week 9 Friday: **2026-11-06**.
+- `getSections.do` returned 13 enabled period records.
+- 13/13 displayed times matched the returned data exactly, from `08:00–08:45` through `20:40–21:25`.
+
+## Course comparison
+
+The current week view showed 16 course blocks. All 16 matched the normalized week-9 records.
+
+The full semester timetable view showed 42 course blocks. All 42 matched on:
+
+- course name;
+- course code;
+- weekday;
+- teaching-week set parsed from the visible week rule;
+- start and end section;
+- teacher;
+- room.
+
+Result: **42/42 exact matches, 0 missing, 0 extra, 0 parse errors**.
+
+## Validation
+
+- All 42 source records produced a meeting.
+- All meetings referenced valid section codes from `getSections.do`.
+- No teacher or room was missing in the accepted dataset.
+- All week bitmaps were valid binary strings.
+- The generated schema 2.0 exchange file validated successfully.
+- No authentication or identity field appeared in the normalized exchange output.
+
+## Limitations
+
+- Acceptance is specific to the observed WHUT 2026-2027-1 student layout.
+- Non-empty `notArrangeList` and `practiceList` payloads were not available for semantic verification.
+- No dedicated adjustment endpoint was observed; adjustment support remains limited to explicit records.
+- Future WHUT frontend/API releases require a new live comparison before keeping the `Verified` label.

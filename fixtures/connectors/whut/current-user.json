@@ -1,0 +1,25 @@
+{
+  "msg": null,
+  "code": "0",
+  "datas": {
+    "userName": "测试学生",
+    "userType": "student",
+    "rzlbdm": "01",
+    "userId": "TEST-WHUT-0001",
+    "userGroups": [
+      {
+        "roleId": "test-role",
+        "roleName": "学生组（在校）",
+        "currentRole": true
+      }
+    ],
+    "userSettings": [],
+    "admin": false,
+    "welcomeInfo": {
+      "xnxqdm": "2026-2027-1",
+      "xnxqmc": "2026-2027-1",
+      "classWeek": 9,
+      "date": "今天是11月6日 星期五"
+    }
+  }
+}
