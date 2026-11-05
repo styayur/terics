@@ -32,12 +32,23 @@ jobs:
           cache-dependency-path: python/pyproject.toml
       - run: npm ci
       - run: python -m pip install -e "./python[dev]"
+      - run: python -m playwright install --with-deps chromium
+      - run: npm run build:connectors
       - run: npm run check
       - run: npm test
+      - run: npm run build:extension
+      - run: npm run package:extension
+      - run: npm run verify:extension
+      - run: npm run audit:licenses
+      - run: npm audit --audit-level=high
       - run: ruff check python main.pyw
+      - run: python -m compileall -q python main.pyw
       - run: python -m pytest python/tests
+      - run: python scripts/audit_python_licenses.py
       - run: npm run test:consistency
       - run: npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
       - name: Package assets
         shell: bash
         run: |
@@ -45,11 +56,15 @@ jobs:
           ASSET_VERSION="${TAG}"
           mkdir -p release/terics-python-${ASSET_VERSION}
           cp -a main.pyw requirements.txt requirements-dev.txt README.md LICENSE THIRD_PARTY_NOTICES.md python schema spec fixtures docs release/terics-python-${ASSET_VERSION}/
-          find release/terics-python-${ASSET_VERSION} -type d -name __pycache__ -prune -exec rm -rf {} +
+          find release/terics-python-${ASSET_VERSION} -type d \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache \) -prune -exec rm -rf {} +
           (cd release && zip -qr terics-python-${ASSET_VERSION}.zip terics-python-${ASSET_VERSION})
           (cd dist && zip -qr ../release/terics-web-${ASSET_VERSION}.zip .)
           cd release
-          sha256sum terics-web-${ASSET_VERSION}.zip terics-python-${ASSET_VERSION}.zip > SHA256SUMS.txt
+          if [ ! -f "terics-extension-${ASSET_VERSION}.zip" ]; then
+            echo "extension package missing" >&2
+            exit 1
+          fi
+          sha256sum terics-web-${ASSET_VERSION}.zip terics-extension-${ASSET_VERSION}.zip terics-python-${ASSET_VERSION}.zip > SHA256SUMS.txt
           NOTES="docs/release-notes-${TAG}.md"
           if [ -f "../${NOTES}" ]; then cp "../${NOTES}" RELEASE_NOTES.md; else echo "See CHANGELOG for ${TAG}." > RELEASE_NOTES.md; fi
       - name: Publish GitHub Release
@@ -60,15 +75,21 @@ jobs:
         run: |
           set -euo pipefail
           TAG_NAME="${VERSION}"
+          PRERELEASE_FLAG=""
+          case "${TAG_NAME}" in
+            *-*) PRERELEASE_FLAG="--prerelease" ;;
+          esac
           if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
-            gh release edit "${TAG_NAME}" --notes-file release/RELEASE_NOTES.md
-            gh release upload "${TAG_NAME}" release/terics-web-${TAG_NAME}.zip release/terics-python-${TAG_NAME}.zip release/SHA256SUMS.txt --clobber
+            gh release edit "${TAG_NAME}" --notes-file release/RELEASE_NOTES.md ${PRERELEASE_FLAG}
+            gh release upload "${TAG_NAME}" release/terics-web-${TAG_NAME}.zip release/terics-extension-${TAG_NAME}.zip release/terics-python-${TAG_NAME}.zip release/SHA256SUMS.txt --clobber
           else
             gh release create "${TAG_NAME}" \
               release/terics-web-${TAG_NAME}.zip \
+              release/terics-extension-${TAG_NAME}.zip \
               release/terics-python-${TAG_NAME}.zip \
               release/SHA256SUMS.txt \
               --title "terics ${TAG_NAME}" \
               --notes-file release/RELEASE_NOTES.md \
+              ${PRERELEASE_FLAG} \
               --verify-tag
           fi

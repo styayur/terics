@@ -7,9 +7,10 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from .errors import TericsParseError
-from .ics import generate_ics, suggested_file_name
+from .ics import generate_ics, generate_ics_v2, suggested_file_name, suggested_ics_v2_file_name
 from .models import DEFAULT_PERIODS, TIMEZONE, SemesterConfig
 from .parsers import parse_timetable_file
+from .timetable_v2 import parse_terics_json
 
 
 def _default_start() -> str:
@@ -31,7 +32,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        parsed = parse_timetable_file(args.input)
+        input_path = Path(args.input)
+        raw = input_path.read_bytes()
+        is_json = input_path.suffix.lower() == ".json" or raw[:4096].decode("utf-8", errors="ignore").lstrip().startswith("{")
         config = SemesterConfig(
             title=args.title,
             semester_start=args.start,
@@ -39,12 +42,23 @@ def main(argv: list[str] | None = None) -> int:
             periods=[replace(period) for period in DEFAULT_PERIODS],
             alarm_minutes=args.alarm,
         )
-        output = generate_ics(config, parsed.courses)
-        target = Path(args.output) if args.output else Path(args.input).with_suffix(".ics")
+        if is_json:
+            timetable = parse_terics_json(raw.decode("utf-8-sig"))
+            output = generate_ics_v2(timetable, alarm_minutes=args.alarm)
+            event_count = len(output.events)
+            suggested = suggested_ics_v2_file_name(timetable)
+            print(f"terics v2: {len(timetable.get('courses', []))} 门课程, {event_count} 个事件")
+        else:
+            parsed = parse_timetable_file(input_path)
+            old_output = generate_ics(config, parsed.courses)
+            output = old_output
+            event_count = len(old_output.build.events)
+            suggested = suggested_file_name(config)
+            print(f"{parsed.format_label}: {len(parsed.courses)} 门课程, {event_count} 个事件")
+        target = Path(args.output) if args.output else input_path.with_suffix(".ics")
         target.write_text(output.ics, encoding="utf-8", newline="")
-        print(f"{parsed.format_label}: {len(parsed.courses)} 门课程, {len(output.build.events)} 个事件")
         print(f"已写入: {target}")
-        print(f"建议文件名: {suggested_file_name(config)}")
+        print(f"建议文件名: {suggested}")
         return 0
     except (TericsParseError, ValueError, OSError) as exc:
         print(f"terics: {exc}", file=sys.stderr)

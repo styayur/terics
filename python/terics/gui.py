@@ -1,25 +1,33 @@
 from __future__ import annotations
 
+import copy
+import json
 import tkinter as tk
 from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
+from .connectors.browser import ConnectorBrowserWorker
+from .connectors.registry import SchoolProfile, list_schools
 from .course import build_events
 from .dates import monday_of_iso
 from .errors import TericsParseError
-from .ics import generate_ics, suggested_file_name
+from .google.auth import GoogleOAuthNotConfiguredError, authenticate, clear_google_credentials, oauth_configured
+from .google.calendar_sync import GoogleApiCalendarClient, execute_sync_plan, plan_google_sync
+from .ics import generate_ics, generate_ics_v2, suggested_file_name, suggested_ics_v2_file_name
 from .models import (
     APP_VERSION,
     DEFAULT_PERIODS,
     TIMEZONE,
     BuildResult,
+    CalendarEvent,
     ParseResult,
     PeriodTime,
     SemesterConfig,
 )
 from .parsers import parse_timetable_file
+from .timetable_v2 import build_v2_events, parse_terics_json, validate_timetable_v2
 
 INK = "#111410"
 INK_SOFT = "#353A32"
@@ -49,13 +57,19 @@ class TericsApp:
         self.root.configure(bg=PAPER)
 
         self.parsed: ParseResult | None = None
+        self.timetable_v2: dict[str, object] | None = None
+        self.v2_build = None
         self.source_path: Path | None = None
         self.config = self._default_config()
         self.build: BuildResult | None = None
+        self.browser_worker: ConnectorBrowserWorker | None = None
+        self.school_profiles: dict[str, SchoolProfile] = {}
+        self.google_last_result = "未同步"
 
         self.vars = {
             "title": tk.StringVar(value=self.config.title),
             "start": tk.StringVar(value=self.config.semester_start),
+            "teaching_weeks": tk.StringVar(value="20"),
             "alarm": tk.StringVar(value=str(self.config.alarm_minutes)),
         }
         self.period_vars: list[tuple[tk.StringVar, tk.StringVar]] = []
@@ -68,6 +82,8 @@ class TericsApp:
         self._set_status("idle", "等待文件")
         self._set_export_enabled(False)
         self.root.bind("<Control-o>", lambda _event: self.choose_file())
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.root.after(250, self._poll_browser_messages)
 
     def _default_config(self) -> SemesterConfig:
         today = date.today()
@@ -196,15 +212,33 @@ class TericsApp:
         center = tk.Frame(parent, bg=PAPER)
         center.grid(row=0, column=1, sticky="nsew", padx=14, pady=14)
         center.grid_columnconfigure(0, weight=1)
-        center.grid_rowconfigure(1, weight=1)
-        setup = self._card(center)
+        center.grid_rowconfigure(0, weight=1)
+
+        self.center_canvas = tk.Canvas(center, bg=PAPER, highlightthickness=0, bd=0)
+        scrollbar = ttk.Scrollbar(center, orient="vertical", command=self.center_canvas.yview)
+        self.center_canvas.configure(yscrollcommand=scrollbar.set)
+        self.center_canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        content = tk.Frame(self.center_canvas, bg=PAPER)
+        window_id = self.center_canvas.create_window((0, 0), window=content, anchor="nw")
+        content.grid_columnconfigure(0, weight=1)
+        content.bind(
+            "<Configure>",
+            lambda _event: self.center_canvas.configure(scrollregion=self.center_canvas.bbox("all")),
+        )
+        self.center_canvas.bind(
+            "<Configure>",
+            lambda event: self.center_canvas.itemconfigure(window_id, width=event.width),
+        )
+
+        setup = self._card(content)
         setup.grid(row=0, column=0, sticky="ew")
         setup.grid_columnconfigure(1, weight=1)
         self._build_ingest(setup)
         self._build_settings(setup)
-        preview = self._card(center)
-        preview.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
-        preview.grid_rowconfigure(3, weight=1)
+        preview = self._card(content)
+        preview.grid(row=1, column=0, sticky="ew", pady=(12, 0))
         preview.grid_columnconfigure(0, weight=1)
         self._build_preview(preview)
 
@@ -224,13 +258,93 @@ class TericsApp:
             relief="flat", padx=16, pady=8, cursor="hand2",
         ).grid(row=0, column=0, rowspan=2, sticky="w")
         tk.Button(
-            actions, text="载入 CSV 样例", command=self.load_sample, bg=PAPER_2, fg=INK_SOFT,
+            actions, text="载入 CSV 样例", command=lambda: self.load_sample("csv"), bg=PAPER_2, fg=INK_SOFT,
             activebackground="#DDDACD", font=MONO_SMALL, relief="flat", padx=10, pady=7, cursor="hand2",
-        ).grid(row=0, column=1, rowspan=2, padx=(8, 14), sticky="w")
-        self.file_label = tk.Label(actions, text="HTML / CSV / XLSX · 最大 10 MiB", bg=PANEL, fg=MUTED, font=SANS_SMALL, anchor="w")
+        ).grid(row=0, column=1, padx=(8, 4), sticky="w")
+        tk.Button(
+            actions, text="载入 v2 样例", command=lambda: self.load_sample("v2"), bg=PAPER_2, fg=INK_SOFT,
+            activebackground="#DDDACD", font=MONO_SMALL, relief="flat", padx=10, pady=7, cursor="hand2",
+        ).grid(row=1, column=1, padx=(8, 14), sticky="w")
+        self.file_label = tk.Label(actions, text="HTML / CSV / XLSX / .terics.json · 最大 10 MiB", bg=PANEL, fg=MUTED, font=SANS_SMALL, anchor="w")
         self.file_label.grid(row=0, column=2, sticky="w")
-        self.file_meta = tk.Label(actions, text="按文件内容识别，不依赖扩展名", bg=PANEL, fg=MUTED, font=("Cascadia Mono", 7), anchor="w")
+        self.file_meta = tk.Label(
+            actions,
+            text="按文件内容识别，不依赖扩展名",
+            bg=PANEL,
+            fg=MUTED,
+            font=("Cascadia Mono", 7),
+            anchor="w",
+        )
         self.file_meta.grid(row=1, column=2, sticky="w")
+
+        browser_bar = tk.Frame(actions, bg=PANEL)
+        browser_bar.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(9, 0))
+        tk.Label(browser_bar, text="直连教务", bg=PANEL, fg=MUTED, font=("Cascadia Mono", 8)).pack(side="left")
+        self.school_profiles = {f"{school.name} · {school.status}": school for school in list_schools()}
+        self.school_select = ttk.Combobox(
+            browser_bar,
+            values=list(self.school_profiles),
+            state="readonly",
+            width=27,
+            font=("Segoe UI", 9),
+        )
+        self.school_select.pack(side="left", padx=(8, 8))
+        if self.school_select["values"]:
+            self.school_select.current(0)
+        self.open_sis_button = tk.Button(
+            browser_bar,
+            text="打开教务浏览器",
+            command=self.open_sis_browser,
+            bg=INK_SOFT,
+            fg=PAPER,
+            activebackground=INK,
+            activeforeground=PAPER,
+            font=("Segoe UI", 8, "bold"),
+            relief="flat",
+            padx=10,
+            pady=5,
+            cursor="hand2",
+        )
+        self.open_sis_button.pack(side="left")
+        self.extract_sis_button = tk.Button(
+            browser_bar,
+            text="从浏览器提取",
+            command=self.extract_from_sis_browser,
+            bg=PAPER_2,
+            fg=INK_SOFT,
+            activebackground="#DDDACD",
+            font=("Segoe UI", 8),
+            relief="flat",
+            padx=10,
+            pady=5,
+            state="disabled",
+            cursor="arrow",
+        )
+        self.extract_sis_button.pack(side="left", padx=(7, 0))
+        self.clear_sis_button = tk.Button(
+            browser_bar,
+            text="清除登录状态",
+            command=self.clear_sis_login,
+            bg=PANEL,
+            fg=MUTED,
+            activebackground=PANEL,
+            font=("Segoe UI", 8),
+            relief="flat",
+            padx=6,
+            pady=5,
+            cursor="hand2",
+        )
+        self.clear_sis_button.pack(side="left", padx=(6, 0))
+        self.browser_status_label = tk.Label(
+            browser_bar,
+            text="不读取日常浏览器资料",
+            bg=PANEL,
+            fg=MUTED,
+            font=("Cascadia Mono", 7),
+            anchor="e",
+        )
+        self.browser_status_label.pack(side="right", fill="x", expand=True)
+
         self.issue_label = tk.Label(
             card, text="", bg="#FFF8ED", fg=WARNING, font=SANS_SMALL, justify="left",
             anchor="w", wraplength=700, padx=10, pady=7,
@@ -394,7 +508,35 @@ class TericsApp:
         )
         self.export_button.pack(fill="x", padx=20)
         self.export_state = tk.Label(panel, text="等待有效课表", bg=INK, fg="#909788", font=("Cascadia Mono", 7), anchor="w")
-        self.export_state.pack(fill="x", padx=20, pady=(6, 12))
+        self.export_state.pack(fill="x", padx=20, pady=(6, 8))
+
+        self.google_sync_button = tk.Button(
+            panel,
+            text="Google Calendar 增量同步…",
+            command=self.sync_google_calendar,
+            bg="#1B1E19",
+            fg=PAPER,
+            activebackground="#252A22",
+            activeforeground=PAPER,
+            font=("Segoe UI", 8, "bold"),
+            relief="flat",
+            pady=8,
+            cursor="hand2",
+        )
+        self.google_sync_button.pack(fill="x", padx=20)
+        self.google_clear_button = tk.Button(
+            panel,
+            text="清除 Google 授权",
+            command=self.clear_google_auth,
+            bg=INK,
+            fg="#8D9486",
+            activebackground=INK,
+            activeforeground=PAPER,
+            font=("Segoe UI", 7),
+            relief="flat",
+            cursor="hand2",
+        )
+        self.google_clear_button.pack(fill="x", padx=20, pady=(4, 6))
 
         guide = tk.Frame(panel, bg=INK)
         guide.pack(fill="x", padx=20, pady=(8, 0))
@@ -486,23 +628,171 @@ class TericsApp:
         if path:
             self._load_path(Path(path))
 
-    def load_sample(self) -> None:
-        sample = Path(__file__).resolve().parents[2] / "fixtures" / "csv" / "terics_sample.csv"
+    def load_sample(self, kind: str = "csv") -> None:
+        root = Path(__file__).resolve().parents[2]
+        if kind == "v2":
+            sample = root / "fixtures" / "exchange" / "terics-example.terics.json"
+        else:
+            sample = root / "fixtures" / "csv" / "terics_sample.csv"
         if not sample.exists():
-            sample = Path(__file__).resolve().parents[1] / "fixtures" / "csv" / "terics_sample.csv"
+            sample = Path(__file__).resolve().parents[1] / sample.relative_to(root)
         if not sample.exists():
             messagebox.showinfo("terics", "当前发行包未包含测试样例，请选择自己的课表文件。")
             return
         self._load_path(sample)
+
+    def _on_close(self) -> None:
+        if self.browser_worker is not None:
+            self.browser_worker.close()
+        self.root.destroy()
+
+    def open_sis_browser(self) -> None:
+        selection = self.school_select.get()
+        profile = self.school_profiles.get(selection)
+        if profile is None:
+            messagebox.showerror("terics", "当前没有可用学校 Profile。")
+            return
+        if self.browser_worker is None:
+            self.browser_worker = ConnectorBrowserWorker()
+        self.browser_worker.open_sis(profile.entry_url)
+        self.open_sis_button.configure(state="disabled", cursor="arrow")
+        self.browser_status_label.configure(text="正在打开独立浏览器…", fg=WARNING)
+        self._set_status("working", "等待手动登录")
+        messagebox.showinfo(
+            "请在独立浏览器中登录",
+            "terics 已打开独立 Playwright 浏览器，不会读取你的日常 Chrome/Edge 配置或 Cookie。\n\n"
+            "请手动完成学校统一认证，进入“我的课表”，再回到 terics 点击“从浏览器提取”。",
+            parent=self.root,
+        )
+
+    def extract_from_sis_browser(self) -> None:
+        if self.browser_worker is None:
+            messagebox.showinfo("terics", "请先打开教务浏览器。")
+            return
+        try:
+            config = self._read_config()
+        except (ValueError, TypeError) as exc:
+            messagebox.showerror("学期参数错误", str(exc), parent=self.root)
+            return
+        semester = {
+            "termName": config.title,
+            "semesterStart": config.semester_start,
+            "teachingWeeks": int(self.vars["teaching_weeks"].get() or 20),
+            "timezone": TIMEZONE,
+        }
+        self.extract_sis_button.configure(state="disabled", cursor="arrow")
+        self.browser_status_label.configure(text="正在提取…", fg=WARNING)
+        self._set_status("working", "正在执行只读 Connector")
+        self.browser_worker.extract(semester)
+
+    def clear_sis_login(self) -> None:
+        if not messagebox.askyesno(
+            "清除独立浏览器数据",
+            "将关闭 terics 独立浏览器，并删除其私有登录配置目录。\n\n"
+            "不会影响你日常使用的 Chrome/Edge，也不会修改学校服务器数据。继续吗？",
+            parent=self.root,
+        ):
+            return
+        if self.browser_worker is None:
+            self.browser_worker = ConnectorBrowserWorker()
+        self.browser_worker.clear_login_data()
+        self.browser_status_label.configure(text="正在清除…", fg=WARNING)
+
+    def _poll_browser_messages(self) -> None:
+        if self.browser_worker is not None:
+            try:
+                while True:
+                    message = self.browser_worker.messages.get_nowait()
+                    kind = message.get("type")
+                    if kind == "status":
+                        state = message.get("state")
+                        text = str(message.get("message", ""))
+                        self.browser_status_label.configure(text=text, fg=SUCCESS if state != "login_required" else WARNING)
+                        if state == "login_required":
+                            self.extract_sis_button.configure(state="normal", cursor="hand2")
+                            self.open_sis_button.configure(state="normal", cursor="hand2")
+                            self._set_status("success", "等待进入课表页")
+                        elif state == "extracting":
+                            self._set_status("working", "正在读取教务只读接口")
+                        elif state == "cleared":
+                            self.extract_sis_button.configure(state="disabled", cursor="arrow")
+                            self.open_sis_button.configure(state="normal", cursor="hand2")
+                            self._set_status("idle", "登录状态已清除")
+                        elif state == "closed":
+                            self.extract_sis_button.configure(state="disabled", cursor="arrow")
+                    elif kind == "error":
+                        text = str(message.get("message", "浏览器操作失败"))
+                        self.browser_status_label.configure(text=text, fg=DANGER)
+                        self.extract_sis_button.configure(state="normal", cursor="hand2")
+                        self.open_sis_button.configure(state="normal", cursor="hand2")
+                        self._set_status("error", "浏览器操作失败")
+                        self._show_issues([text], [])
+                    elif kind == "result":
+                        payload = message.get("data") or {}
+                        timetable = payload.get("timetable") if isinstance(payload, dict) else None
+                        if isinstance(timetable, dict):
+                            self._load_v2_timetable(timetable, f"SIS: {timetable.get('source', {}).get('schoolName', '教务系统')}")
+                            self.extract_sis_button.configure(state="normal", cursor="hand2")
+                        else:
+                            self._show_issues(["Connector 返回了无法识别的数据"], [])
+            except Exception:
+                pass
+        try:
+            self.root.after(250, self._poll_browser_messages)
+        except tk.TclError:
+            pass
+
+    def _load_v2_timetable(self, timetable: dict[str, object], source_name: str) -> None:
+        report = validate_timetable_v2(timetable)
+        if report["status"] == "failed":
+            self._show_issues([issue.message for issue in report["issues"]], [])
+            self._set_status("error", "terics v2 验证失败")
+            return
+        self.timetable_v2 = copy.deepcopy(timetable)
+        self.parsed = None
+        term = self.timetable_v2["term"]  # type: ignore[index]
+        self.vars["title"].set(str(term.get("termName", "我的课表")))  # type: ignore[union-attr]
+        self.vars["start"].set(str(term.get("semesterStart", "")))  # type: ignore[union-attr]
+        self.vars["teaching_weeks"].set(str(term.get("teachingWeeks", 20)))  # type: ignore[union-attr]
+        schedule = (term.get("periodSchedules") or [])[0]  # type: ignore[union-attr]
+        if isinstance(schedule, dict):
+            self.config.periods = [
+                PeriodTime(
+                    index=int(period["index"]),
+                    start=str(period["start"]),
+                    end=str(period["end"]),
+                    label=str(period.get("label") or ""),
+                )
+                for period in schedule.get("periods", [])
+            ]
+        self._render_periods()
+        source = self.timetable_v2["source"]  # type: ignore[index]
+        self.file_label.configure(text=source_name)
+        self.file_meta.configure(
+            text=f"terics v2 · {source.get('adapterId', '')}@{source.get('adapterVersion', '')} · "
+            f"{len(self.timetable_v2.get('courses', []))} courses"  # type: ignore[union-attr]
+        )
+        self._set_status("success", f"terics v2 · {source.get('schoolName') or source.get('adapterId')}")
+        self._set_step(2)
+        self.extract_sis_button.configure(state="normal", cursor="hand2")
+        self.apply_settings(show_dialog=False)
 
     def _load_path(self, path: Path) -> None:
         self._set_status("working", "正在内容嗅探")
         self._set_step(1)
         self.root.update_idletasks()
         try:
+            raw_bytes = path.read_bytes()
+            text_preview = raw_bytes[:4096].decode("utf-8", errors="ignore").lstrip()
+            if path.suffix.lower() == ".json" or text_preview.startswith("{"):
+                timetable = parse_terics_json(raw_bytes.decode("utf-8-sig"))
+                self._load_v2_timetable(timetable, path.name)
+                return
             parsed = parse_timetable_file(path)
         except Exception as exc:  # noqa: BLE001 - show parse errors in GUI
             self.parsed = None
+            self.timetable_v2 = None
+            self.v2_build = None
             self.build = None
             self._set_status("error", "识别失败")
             self.file_label.configure(text=path.name)
@@ -520,6 +810,8 @@ class TericsApp:
             return
 
         self.parsed = parsed
+        self.timetable_v2 = None
+        self.v2_build = None
         self.source_path = path
         self._set_status("success", f"{parsed.format_label} · 已识别")
         self._set_step(2)
@@ -550,18 +842,97 @@ class TericsApp:
         ]
         return SemesterConfig(title=title, semester_start=start, timezone=TIMEZONE, periods=periods, alarm_minutes=alarm)
 
+    def _v2_build_to_legacy(self, v2_build) -> BuildResult:
+        events = [
+            CalendarEvent(
+                uid=event.uid,
+                title=event.title,
+                teacher=event.teacher,
+                location=event.room,
+                note=event.note,
+                weekday=event.weekday,
+                start_period=event.start_period,
+                end_period=event.end_period,
+                week=event.week,
+                date=event.date,
+                start=event.start,
+                end=event.end,
+                start_date_time=event.start_date_time,
+                end_date_time=event.end_date_time,
+                week_rule=event.week_rule,
+            )
+            for event in v2_build.events
+        ]
+        return BuildResult(events=events, conflicts=v2_build.conflicts, issues=v2_build.issues)
+
+    def _apply_v2_settings(self) -> BuildResult:
+        assert self.timetable_v2 is not None
+        timetable = copy.deepcopy(self.timetable_v2)
+        term = timetable["term"]  # type: ignore[index]
+        term["semesterStart"] = self.config.semester_start  # type: ignore[index]
+        term["termName"] = self.config.title  # type: ignore[index]
+        term["teachingWeeks"] = int(self.vars["teaching_weeks"].get() or 20)  # type: ignore[index]
+        schedules = term.get("periodSchedules", [])  # type: ignore[union-attr]
+        if not schedules:
+            schedules = [
+                {
+                    "id": f"periods-{self.config.semester_start}",
+                    "label": "用户确认作息",
+                    "effectiveFrom": self.config.semester_start,
+                    "periods": [
+                        {"index": period.index, "start": period.start, "end": period.end, "label": period.label}
+                        for period in self.config.periods
+                    ],
+                }
+            ]
+            term["periodSchedules"] = schedules  # type: ignore[index]
+        else:
+            primary = schedules[0]
+            if len(schedules) == 1:
+                primary["effectiveFrom"] = self.config.semester_start
+            primary["periods"] = [
+                {"index": period.index, "start": period.start, "end": period.end, "label": period.label}
+                for period in self.config.periods
+            ]
+        report = validate_timetable_v2(timetable)
+        timetable["validation"] = {
+            "status": report["status"],
+            "checks": [],
+            "completeness": report["completeness"],
+        }
+        if report["issues"]:
+            raise TericsParseError("terics v2 配置验证失败", report["issues"])
+        self.timetable_v2 = timetable
+        v2_build = build_v2_events(timetable)
+        self.v2_build = v2_build
+        warnings = [
+            issue.message
+            for issue in list(report["warnings"]) + list(v2_build.issues)
+            if issue.severity == "warning"
+        ]
+        self._show_issues([], warnings)
+        return self._v2_build_to_legacy(v2_build)
+
     def apply_settings(self, show_dialog: bool = True) -> None:
-        if self.parsed is None:
+        if self.parsed is None and self.timetable_v2 is None:
             if show_dialog:
-                messagebox.showinfo("terics", "请先选择课表文件。")
+                messagebox.showinfo("terics", "请先选择课表文件或从浏览器提取。")
             return
         self.vars["title"].set(self.vars["title"].get()[:80])
         try:
             config = self._read_config()
-            build = build_events(config, self.parsed.courses)
-        except (ValueError, TypeError) as exc:
+            if self.timetable_v2 is not None:
+                self.config = config
+                build = self._apply_v2_settings()
+            else:
+                assert self.parsed is not None
+                build = build_events(config, self.parsed.courses)
+                self.config = config
+        except (ValueError, TypeError, TericsParseError) as exc:
             self._set_status("error", "时间参数错误")
-            messagebox.showerror("时间参数错误", str(exc), parent=self.root)
+            self._show_issues([str(exc)], [])
+            if show_dialog:
+                messagebox.showerror("时间参数错误", str(exc), parent=self.root)
             return
 
         error_issues = [issue.message for issue in build.issues if issue.severity == "error"]
@@ -573,13 +944,18 @@ class TericsApp:
             self._refresh_export_state()
             return
 
-        self.config = config
         self.build = build
-        self._set_status("success", f"{self.parsed.format_label} · 已识别")
+        source_label = (
+            f"{self.timetable_v2.get('source', {}).get('schoolName', 'terics v2')}"
+            if self.timetable_v2 is not None
+            else self.parsed.format_label if self.parsed is not None else "terics"
+        )
+        self._set_status("success", f"{source_label} · 已识别")
         self._set_step(3)
         self._render_preview(build)
-        warnings = [issue.message for issue in self.parsed.issues + build.issues if issue.severity == "warning"]
-        self._show_issues([], warnings)
+        if self.timetable_v2 is None and self.parsed is not None:
+            warnings = [issue.message for issue in self.parsed.issues + build.issues if issue.severity == "warning"]
+            self._show_issues([], warnings)
         self._set_conflict_controls(bool(build.conflicts), list(build.conflicts))
         self._refresh_export_state()
         if show_dialog:
@@ -613,31 +989,175 @@ class TericsApp:
         self.export_first_label.configure(text=build.events[0].date if build.events else "—")
         self.export_last_label.configure(text=build.events[-1].date if build.events else "—")
 
+    def sync_google_calendar(self) -> None:
+        if self.timetable_v2 is None:
+            messagebox.showinfo(
+                "需要 terics v2 数据",
+                "请先导入扩展生成的 .terics.json，或通过“直连教务”提取；旧版 CSV/HTML/XLSX 请先在 Web 端转换或导出 ICS。",
+                parent=self.root,
+            )
+            return
+        if not oauth_configured():
+            messagebox.showinfo(
+                "Google OAuth 未配置",
+                "请设置 TERICS_GOOGLE_CLIENT_ID / TERICS_GOOGLE_CLIENT_SECRET，"
+                "或设置 TERICS_GOOGLE_CLIENT_CONFIG 指向 Desktop OAuth JSON。\n\n"
+                "授权令牌保存在系统凭据库，不写入普通配置文件。离线 ICS 不受影响。",
+                parent=self.root,
+            )
+            return
+        try:
+            self.config = self._read_config()
+            self._apply_v2_settings()
+            credentials = authenticate()
+            from googleapiclient.discovery import build as google_build
+
+            service = google_build("calendar", "v3", credentials=credentials, cache_discovery=False)
+            client = GoogleApiCalendarClient(service)
+            calendars = [item for item in client.list_calendars() if str(item.get("summary", "")).startswith("terics /")]
+            if not calendars:
+                if not messagebox.askyesno(
+                    "创建独立 terics 日历",
+                    "未找到 terics 专用日历。是否创建新的 Google 日历？\n\n不会修改其他应用创建的事件。",
+                    parent=self.root,
+                ):
+                    return
+                calendars = [client.create_calendar(f"terics / {self.config.title}")]
+            if len(calendars) == 1:
+                selected = calendars[0]
+            else:
+                choices = "\n".join(f"{index + 1}. {item.get('summary', 'terics')}" for index, item in enumerate(calendars))
+                selected_index = simpledialog.askinteger(
+                    "选择 terics 日历",
+                    f"请选择目标日历：\n\n{choices}",
+                    minvalue=1,
+                    maxvalue=len(calendars),
+                    parent=self.root,
+                )
+                if selected_index is None:
+                    return
+                selected = calendars[selected_index - 1]
+            calendar_id = str(selected["id"])
+            existing = client.list_managed_events(calendar_id, str(self.timetable_v2["term"]["termId"]))  # type: ignore[index]
+            plan = plan_google_sync(self.timetable_v2, existing, calendar_id)
+            if plan.blocked:
+                messagebox.showerror(
+                    "同步已阻止",
+                    "\n".join(plan.warnings) or "数据完整性检查失败，禁止同步。",
+                    parent=self.root,
+                )
+                return
+            preview = (
+                f"目标：{selected.get('summary', calendar_id)}\n"
+                f"新建：{len(plan.creates)}\n更新：{len(plan.updates)}\n跳过：{len(plan.skips)}\n"
+                f"删除候选：{len(plan.deletes)}"
+            )
+            if plan.warnings:
+                preview += "\n\n提示：\n" + "\n".join(plan.warnings)
+            if plan.deletes:
+                preview += "\n\n删除候选只会影响带 terics_source=terics 且学期匹配的事件。"
+            if not messagebox.askyesno("确认执行增量同步", preview, parent=self.root):
+                return
+            confirm_deletes = bool(plan.deletes) and messagebox.askyesno(
+                "最终确认删除",
+                f"即将删除 {len(plan.deletes)} 个旧 terics 事件。此操作需要你明确确认。继续吗？",
+                parent=self.root,
+            )
+            result = execute_sync_plan(
+                plan,
+                client.insert_event,
+                client.patch_event,
+                client.delete_event,
+                confirm_deletes,
+            )
+        except GoogleOAuthNotConfiguredError as exc:
+            messagebox.showerror("Google OAuth 未配置", str(exc), parent=self.root)
+            return
+        except Exception as exc:  # noqa: BLE001 - show OAuth/API failure
+            messagebox.showerror("Google Calendar 同步失败", str(exc), parent=self.root)
+            return
+        self.google_last_result = (
+            f"{date.today().isoformat()} · 新建 {result.created} · 更新 {result.updated} · "
+            f"跳过 {result.skipped} · 删除 {result.deleted}"
+        )
+        self.export_state.configure(text=self.google_last_result)
+        log_path = Path.home() / ".terics" / "sync-log.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write(
+                json.dumps(
+                    {
+                        "at": date.today().isoformat(),
+                        "calendarId": calendar_id,
+                        "termId": plan.term_id,
+                        "created": result.created,
+                        "updated": result.updated,
+                        "skipped": result.skipped,
+                        "deleted": result.deleted,
+                        "errors": result.errors,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+        summary = self.google_last_result
+        if result.errors:
+            summary += "\n\n部分错误：\n" + "\n".join(result.errors[:5])
+        messagebox.showinfo("Google Calendar 同步完成", summary, parent=self.root)
+
+    def clear_google_auth(self) -> None:
+        if not messagebox.askyesno(
+            "清除 Google 授权",
+            "将从系统凭据库删除 terics 保存的 Google OAuth Refresh Token。\n不会删除 Google 日历事件。继续吗？",
+            parent=self.root,
+        ):
+            return
+        try:
+            clear_google_credentials()
+        except Exception as exc:  # noqa: BLE001 - keyring backend failure
+            messagebox.showerror("清除失败", str(exc), parent=self.root)
+            return
+        self.export_state.configure(text="Google 授权已清除")
+        messagebox.showinfo("terics", "Google 授权已从系统凭据库清除。", parent=self.root)
+
     def export_ics(self) -> None:
-        if self.parsed is None or self.build is None or not self.build.events:
+        if (self.parsed is None and self.timetable_v2 is None) or self.build is None or not self.build.events:
             return
         if self.build.conflicts and not self.conflict_ack.get():
             messagebox.showwarning("存在冲突", "请先勾选“我已检查冲突，仍要导出”。", parent=self.root)
             return
+        if self.timetable_v2 is not None:
+            initial_name = suggested_ics_v2_file_name(self.timetable_v2)
+        else:
+            initial_name = suggested_file_name(self.config)
         target = filedialog.asksaveasfilename(
             title="保存 ICS 文件",
             defaultextension=".ics",
-            initialfile=suggested_file_name(self.config),
+            initialfile=initial_name,
             filetypes=[("iCalendar 文件", "*.ics"), ("所有文件", "*.*")],
         )
         if not target:
             return
         try:
-            output = generate_ics(self.config, self.parsed.courses)
+            if self.timetable_v2 is not None:
+                self.config = self._read_config()
+                self._apply_v2_settings()
+                assert self.timetable_v2 is not None
+                output = generate_ics_v2(self.timetable_v2, alarm_minutes=self.config.alarm_minutes)
+                event_count = len(output.events)
+            else:
+                assert self.parsed is not None
+                output = generate_ics(self.config, self.parsed.courses)
+                event_count = len(output.build.events)
             Path(target).write_text(output.ics, encoding="utf-8", newline="")
         except (TericsParseError, ValueError, OSError) as exc:
             messagebox.showerror("导出失败", str(exc), parent=self.root)
             return
         self._set_step(4)
-        self.export_state.configure(text=f"已写入 {len(output.build.events)} 个事件")
+        self.export_state.configure(text=f"已写入 {event_count} 个事件")
         messagebox.showinfo(
             "ICS 已生成",
-            f"已写入 {len(output.build.events)} 个事件：\n{target}\n\n"
+            f"已写入 {event_count} 个事件：\n{target}\n\n"
             "请在 Google Calendar 中通过“设置 → 导入和导出”手动导入。",
             parent=self.root,
         )

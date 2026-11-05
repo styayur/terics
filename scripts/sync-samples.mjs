@@ -6,6 +6,7 @@ const samples = [
   ["fixtures/csv/terics_sample.csv", "public/samples/csv-sample.csv"],
   ["fixtures/html/qingguo_list_sample.xls", "public/samples/html-list-sample.xls"],
   ["fixtures/xlsx/wakeup_schedule_template.xlsx", "public/samples/xlsx-grid-sample.xlsx"],
+  ["fixtures/exchange/terics-example.terics.json", "public/samples/terics-example.terics.json"],
 ];
 
 await mkdir(resolve(root, "public/samples"), { recursive: true });

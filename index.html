@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: https://www.googleapis.com; frame-src https://accounts.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <meta name="theme-color" content="#111410" />
     <meta
@@ -27,12 +27,12 @@
           </svg>
         </span>
         <span class="wordmark-text">TERICS</span>
-        <span class="wordmark-version">v0.1.0</span>
+        <span class="wordmark-version">v0.5.0-rc.1</span>
       </a>
       <div class="topbar-center">
         <span>UNIVERSITY TIMETABLE → ICALENDAR</span>
         <span class="rule"></span>
-        <span>BUILD 001</span>
+        <span>BUILD 050</span>
       </div>
       <div class="local-badge" title="文件只在当前浏览器标签页内处理">
         <span class="pulse"></span>
@@ -46,11 +46,11 @@
         <ol class="steps" id="steps">
           <li data-step="select" class="active">
             <span class="step-number">01</span>
-            <span><strong>选择文件</strong><small>HTML / CSV / XLSX</small></span>
+            <span><strong>选择来源</strong><small>文件 / .terics.json / 扩展</small></span>
           </li>
           <li data-step="detect">
             <span class="step-number">02</span>
-            <span><strong>自动识别</strong><small>按文件内容嗅探</small></span>
+            <span><strong>自动识别</strong><small>内容嗅探 / Connector</small></span>
           </li>
           <li data-step="timing">
             <span class="step-number">03</span>
@@ -81,6 +81,8 @@
           <div class="matrix-row"><span>CSV</span><span class="ok">VERIFIED</span></div>
           <div class="matrix-row"><span>HTML 表格</span><span class="ok">VERIFIED</span></div>
           <div class="matrix-row"><span>XLSX</span><span class="ok">VERIFIED</span></div>
+          <div class="matrix-row"><span>.TERICS.JSON</span><span class="ok">V2</span></div>
+          <div class="matrix-row"><span>SIS CONNECTORS</span><span class="ok">4 PROTOCOLS</span></div>
           <div class="matrix-row muted"><span>旧版二进制 XLS</span><span>N/A</span></div>
         </div>
 
@@ -95,7 +97,7 @@
           <div class="panel-heading">
             <div>
               <div class="eyebrow">01 / INGEST</div>
-              <h1 id="ingest-title">把课表变成日历事件</h1>
+              <h1 id="ingest-title">把教务课表变成日历事件</h1>
             </div>
             <div class="status-chip idle" id="parse-status" aria-live="polite">
               <span class="status-dot"></span>
@@ -107,7 +109,7 @@
             <input
               id="file-input"
               type="file"
-              accept=".html,.htm,.csv,.txt,.xls,.xlsx,text/csv,text/html,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept=".html,.htm,.csv,.txt,.json,.xls,.xlsx,text/csv,text/html,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               hidden
             />
             <div class="dropzone-crosshair" aria-hidden="true"></div>
@@ -132,6 +134,7 @@
             <button type="button" class="sample-button" data-sample="csv">CSV / 结构化清单</button>
             <button type="button" class="sample-button" data-sample="html">HTML / 青果列表</button>
             <button type="button" class="sample-button" data-sample="xlsx">XLSX / 周网格</button>
+            <button type="button" class="sample-button" data-sample="json">.terics.json / 扩展交接</button>
           </div>
 
           <div class="parse-readout" id="parse-readout" hidden>
@@ -186,6 +189,11 @@
               <span>时区</span>
               <input id="timezone" type="text" value="Asia/Shanghai" readonly />
               <small>固定为 Asia/Shanghai（UTC+08:00）</small>
+            </label>
+            <label class="field">
+              <span>教学周数</span>
+              <input id="teaching-weeks" type="number" min="1" max="30" value="20" />
+              <small>影响学期边界提示，不自动补造课程。</small>
             </label>
             <label class="field">
               <span>课前提醒</span>
@@ -268,6 +276,46 @@
             </label>
           </div>
         </section>
+        <section class="panel google-panel" id="google-sync-panel" aria-labelledby="google-sync-title">
+          <div class="panel-heading compact">
+            <div>
+              <div class="eyebrow">OPTIONAL / GOOGLE CALENDAR</div>
+              <h2 id="google-sync-title">增量同步</h2>
+            </div>
+            <div class="heading-note" id="google-config-state">检查 OAuth 配置</div>
+          </div>
+          <div class="google-unavailable" id="google-unavailable">
+            <strong>直接同步未启用</strong>
+            <p>GitHub Pages 构建未配置 <code>VITE_GOOGLE_CLIENT_ID</code>。离线 ICS 导出仍完整可用；不会通过不安全代理绕过 OAuth。</p>
+          </div>
+          <div id="google-configured" hidden>
+            <div class="google-toolbar">
+              <button type="button" class="text-button" id="google-connect">连接 Google 测试账户</button>
+              <button type="button" class="text-button" id="google-create-calendar" disabled>创建 terics 日历</button>
+              <select id="google-calendar-select" aria-label="terics Google 日历"><option value="">先连接账户</option></select>
+              <button type="button" class="text-button" id="google-plan-sync" disabled>预览增量同步</button>
+            </div>
+            <p class="google-note">仅处理带有 <code>terics_source=terics</code> 私有扩展属性的事件；默认使用独立 terics 日历。不会修改其他应用事件。</p>
+            <div class="google-plan" id="google-plan" hidden>
+              <div class="preview-summary google-metrics">
+                <div><span>CREATE</span><strong id="google-create-count">0</strong></div>
+                <div><span>UPDATE</span><strong id="google-update-count">0</strong></div>
+                <div><span>SKIP</span><strong id="google-skip-count">0</strong></div>
+                <div><span>DELETE CANDIDATES</span><strong id="google-delete-count">0</strong></div>
+              </div>
+              <div class="issue-box google-warnings" id="google-warning-box" hidden><ul id="google-warning-list"></ul></div>
+              <label class="confirm-conflict" id="google-delete-confirm-row" hidden>
+                <input id="google-delete-confirm" type="checkbox" />
+                <span>我确认删除候选是已取消课程，且数据完整性检查已通过</span>
+              </label>
+              <div class="google-actions">
+                <button type="button" class="text-button" id="google-apply-sync">执行已预览同步</button>
+                <span id="google-sync-status">尚未执行</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
       </main>
 
       <aside class="export-panel" aria-labelledby="export-title">
@@ -296,7 +344,7 @@
               <li><span>03</span>上传本页生成的 .ics</li>
               <li><span>04</span>选择目标日历并导入</li>
             </ol>
-            <p>v0.1.0 不连接 Google 账号，不使用 OAuth 或 Calendar API。</p>
+            <p>Google 同步为可选项。未配置 OAuth Client ID 时仅导出 ICS；配置后也只处理 terics 管理的独立日历事件。</p>
           </div>
 
           <div class="release-note">
@@ -305,7 +353,7 @@
           </div>
 
           <footer class="export-footer">
-            <span>TERICS 0.1.0</span>
+            <span>TERICS 0.5.0-rc.1</span>
             <span>MIT LICENSE</span>
             <a href="https://github.com/styayur/terics" target="_blank" rel="noreferrer">SOURCE ↗</a>
           </footer>

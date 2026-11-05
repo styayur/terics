@@ -101,12 +101,10 @@ classDate = semesterStart + (week - 1) × 7 + (weekday - 1) 天
 
 ## 7. 稳定 UID
 
-UID 输入键：
+旧版 v1 文件管线的 UID 使用稳定来源锚点（优先 `sourceRef`），再加上日期和节次；不得使用课程显示名、教师或教室。v0.5 的 Connector / `.terics.json` 管线使用第 11 节的 courseId + meetingId 算法。
 
 ```text
-course.name U+001F
-course.teacher U+001F
-course.location U+001F
+sourceRef-or-structural-anchor U+001F
 event.date U+001F
 course.startPeriod U+001F
 course.endPeriod
@@ -159,3 +157,51 @@ left.start < right.end && right.start < left.end
 - 解析警告必须保留在预览界面。
 - 不使用网络请求处理用户文件。
 - 不执行 HTML 中的脚本、事件处理器或外部资源。
+
+
+## 11. Schema 2.0 与调课
+
+`.terics.json` 使用 schema 2.0，并把课程（Course）与上课实例（CourseMeeting）分离。一个课程不得仅因名称相同而与其他课程合并；有源课程 ID、教学班 ID 或稳定 source ref 时必须优先使用。
+
+### 有效日期节次表
+
+`term.periodSchedules[]` 中每套作息包含：
+
+- `effectiveFrom`
+- optional `effectiveTo`
+- `periods[]`
+
+对每个事件日期，选择生效区间包含该日期且 `effectiveFrom` 最晚的一套作息。不得假设整个学期只有一套节次时间。
+
+### Schedule Override
+
+V2 事件展开必须应用：
+
+- `cancel`：取消指定原日期实例；
+- `reschedule`：取消原日期并生成新日期实例；
+- `makeup`：生成额外补课实例；
+- `room_change` / `teacher_change` / `period_change`：修改指定原日期实例；
+- 只有 `confirmed: true` 的 override 才可自动应用；未确认的 override 必须忽略并给出 warning。
+
+空数据或完整性验证失败时，不得把“缺失事件”解释为取消。
+
+### V2 UID
+
+```text
+sha256(termId U+001F courseId U+001F meetingId U+001F date U+001F startPeriod U+001F endPeriod)
+```
+
+UID 不得包含课程显示名、教师或教室。
+
+### `.terics.json` 安全约束
+
+递归禁止密码、Cookie、Access Token、Refresh Token、Session Token、CSRF/XSRF、Authorization 和 Credentials 字段。解析后仍需检查 schemaVersion、课程 ID、meeting ID、日期、周次和节次。
+
+### Google Calendar 同步
+
+- 只考虑私有扩展属性 `terics_source=terics` 且 `terics_term_id` 匹配的事件。
+- 同步计划必须先展示 create/update/skip/delete candidates。
+- 空课表不得产生删除候选。
+- 删除候选需要用户再次确认。
+- 不得删除其他应用事件。
+- 不进行后台自动同步。

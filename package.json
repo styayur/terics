@@ -1,9 +1,9 @@
 {
   "name": "terics",
-  "version": "0.1.0",
+  "version": "0.5.0-rc.1",
   "private": true,
   "type": "module",
-  "description": "Local-first Chinese university timetable to Google Calendar compatible ICS converter",
+  "description": "Local-first university timetable bridge for Chinese SIS platforms, ICS and Google Calendar",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -13,9 +13,9 @@
     "node": ">=22.12"
   },
   "scripts": {
-    "predev": "npm run sync:samples",
+    "predev": "npm run sync:samples && npm run build:connectors",
     "dev": "vite",
-    "prebuild": "npm run sync:samples",
+    "prebuild": "npm run sync:samples && npm run build:connectors",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "check": "tsc --noEmit",
@@ -24,7 +24,15 @@
     "test:e2e": "playwright test",
     "sync:samples": "node scripts/sync-samples.mjs",
     "test:consistency": "tsx scripts/consistency.ts",
-    "generate:golden": "node scripts/generate-golden.mjs"
+    "generate:golden": "node scripts/generate-golden.mjs",
+    "build:connectors": "node scripts/build-connectors.mjs",
+    "build:extension": "node scripts/build-extension.mjs",
+    "test:extension": "vitest run tests/connectors tests/extension",
+    "package:extension": "node scripts/package-extension.mjs",
+    "audit:licenses": "node scripts/audit-licenses.mjs",
+    "audit:python-licenses": "python scripts/audit_python_licenses.py",
+    "verify:extension": "node scripts/verify-extension-package.mjs",
+    "test:extension-install:edge": "node scripts/smoke-extension-edge.mjs"
   },
   "dependencies": {
     "papaparse": "^5.7.0",
@@ -32,11 +40,15 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
+    "@types/adm-zip": "^0.5.8",
+    "@types/chrome": "^0.3.7",
     "@types/node": "^26.6.6",
     "@types/papaparse": "^5.5.2",
     "@vitest/coverage-v8": "^5.1.0",
+    "adm-zip": "^0.6.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
+    "esbuild": "^0.28.2",
     "happy-dom": "^21.0.4",
     "ical.js": "^2.2.1",
     "tsx": "^4.23.15",

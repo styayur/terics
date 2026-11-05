@@ -8,17 +8,28 @@ import {
   DEFAULT_PERIODS,
   TIMEZONE,
   type BuildResult,
+  type CalendarEvent,
   type ParseIssue,
   type ParseResult,
   type RawCourse,
   type SemesterConfig,
 } from "./core/types";
+import { buildV2Events } from "./v2/events";
+import { parseTericsJson, readTericsHash } from "./v2/exchange";
+import { generateIcsV2, suggestedIcsV2FileName } from "./v2/ics";
+import { rawCoursesToV2 } from "./v2/convert";
+import type { NormalizedTimetableV2 } from "./v2/types";
+import { validateTimetableV2 } from "./v2/validate";
+import { clearGoogleToken, currentGoogleAccessToken, googleOAuthConfigured, requestGoogleAccessToken } from "./google/auth-web";
+import { GoogleCalendarRestClient } from "./google/client";
+import { executeSyncPlan, planGoogleSync, type GoogleCalendarInfo, type SyncPlan } from "./google/planner";
 
 const STEP_ORDER = ["select", "detect", "timing", "preview", "export"] as const;
 type StepName = (typeof STEP_ORDER)[number];
 
 interface AppState {
   parsed: ParseResult | null;
+  v2: NormalizedTimetableV2 | null;
   sourceName: string;
   sourceSize: number;
   build: BuildResult | null;
@@ -52,6 +63,7 @@ const calendarTitle = element<HTMLInputElement>("calendar-title");
 const semesterStart = element<HTMLInputElement>("semester-start");
 const mondayHint = element<HTMLElement>("monday-hint");
 const alarmMinutes = element<HTMLSelectElement>("alarm-minutes");
+const teachingWeeksInput = element<HTMLInputElement>("teaching-weeks");
 const periodGrid = element<HTMLDivElement>("period-grid");
 const resetPeriods = element<HTMLButtonElement>("reset-periods");
 const weekFilter = element<HTMLSelectElement>("week-filter");
@@ -73,9 +85,28 @@ const exportLastDate = element<HTMLElement>("export-last-date");
 const exportButton = element<HTMLButtonElement>("export-button");
 const exportState = element<HTMLElement>("export-state");
 const toast = element<HTMLDivElement>("toast");
+const googleUnavailable = element<HTMLElement>("google-unavailable");
+const googleConfigured = element<HTMLElement>("google-configured");
+const googleConfigState = element<HTMLElement>("google-config-state");
+const googleConnect = element<HTMLButtonElement>("google-connect");
+const googleCreateCalendar = element<HTMLButtonElement>("google-create-calendar");
+const googleCalendarSelect = element<HTMLSelectElement>("google-calendar-select");
+const googlePlanSync = element<HTMLButtonElement>("google-plan-sync");
+const googlePlanPanel = element<HTMLElement>("google-plan");
+const googleCreateCount = element<HTMLElement>("google-create-count");
+const googleUpdateCount = element<HTMLElement>("google-update-count");
+const googleSkipCount = element<HTMLElement>("google-skip-count");
+const googleDeleteCount = element<HTMLElement>("google-delete-count");
+const googleWarningBox = element<HTMLElement>("google-warning-box");
+const googleWarningList = element<HTMLUListElement>("google-warning-list");
+const googleDeleteConfirmRow = element<HTMLElement>("google-delete-confirm-row");
+const googleDeleteConfirm = element<HTMLInputElement>("google-delete-confirm");
+const googleApplySync = element<HTMLButtonElement>("google-apply-sync");
+const googleSyncStatus = element<HTMLElement>("google-sync-status");
 
 const state: AppState = {
   parsed: null,
+  v2: null,
   sourceName: "",
   sourceSize: 0,
   build: null,
@@ -96,12 +127,15 @@ function defaultConfig(): SemesterConfig {
     timezone: TIMEZONE,
     periods: DEFAULT_PERIODS.map((period) => ({ ...period })),
     alarmMinutes: 10,
+    teachingWeeks: 20,
   };
 }
 
 const config = defaultConfig();
 let rebuildGeneration = 0;
 let toastTimer: number | undefined;
+let googleClient: GoogleCalendarRestClient | null = null;
+let googleCurrentPlan: SyncPlan | null = null;
 
 function setStatus(kind: "idle" | "working" | "success" | "error", text: string): void {
   parseStatus.className = `status-chip ${kind}`;
@@ -175,6 +209,77 @@ function renderParseReadout(parsed: ParseResult): void {
   parseReadout.hidden = false;
 }
 
+function renderV2Readout(timetable: NormalizedTimetableV2): void {
+  sourceFile.textContent = state.sourceName;
+  sourceFile.title = state.sourceName;
+  sourceMeta.textContent = `${formatBytes(state.sourceSize)} · ${timetable.source.schoolName ?? timetable.source.platform ?? "terics v2"} · adapter ${timetable.source.adapterId}@${timetable.source.adapterVersion}`;
+  detectedFormat.textContent = `${timetable.source.platform ?? "terics v2"} / ${timetable.metadata.method}`;
+  detectedConfidence.textContent = timetable.validation.status.toUpperCase();
+  parsedCourseCount.textContent = String(timetable.courses.length);
+  parseReadout.hidden = false;
+}
+
+function v2Issues(timetable: NormalizedTimetableV2): ParseIssue[] {
+  const checks: ParseIssue[] = timetable.validation.checks
+    .filter((check) => check.status !== "pass")
+    .map((check) => ({
+      severity: check.status === "fail" ? "error" : "warning",
+      code: `v2_validation_${check.id}`,
+      message: check.message,
+    }));
+  return [
+    ...(timetable.warnings ?? []).map((message) => ({ severity: "warning" as const, code: "v2_warning", message })),
+    ...checks,
+    ...(timetable.term.periodSchedules.length > 1
+      ? [{ severity: "info" as const, code: "multiple_period_schedules", message: `该课表包含 ${timetable.term.periodSchedules.length} 套有效期节次表；页面编辑器当前调整第一套，导出会保留其余作息。` }]
+      : []),
+  ];
+}
+
+function v2BuildToLegacy(build: Awaited<ReturnType<typeof buildV2Events>>): BuildResult {
+  const events: CalendarEvent[] = build.events.map((event) => ({
+    uid: event.uid,
+    title: event.title,
+    teacher: event.teacher,
+    location: event.room,
+    note: event.note,
+    weekday: event.weekday,
+    startPeriod: event.startPeriod,
+    endPeriod: event.endPeriod,
+    week: event.week,
+    date: event.date,
+    start: event.start,
+    end: event.end,
+    startDateTime: event.startDateTime,
+    endDateTime: event.endDateTime,
+    weekRule: event.weekRule,
+  }));
+  return { events, conflicts: build.conflicts, issues: build.issues };
+}
+
+function applyConfigToV2(): NormalizedTimetableV2 | null {
+  if (!state.v2) return null;
+  const timetable = structuredClone(state.v2);
+  timetable.term.semesterStart = config.semesterStart;
+  timetable.term.termName = config.title;
+  timetable.term.teachingWeeks = config.teachingWeeks ?? timetable.term.teachingWeeks;
+  if (timetable.term.periodSchedules.length === 0) {
+    timetable.term.periodSchedules.push({
+      id: `periods-${config.semesterStart}`,
+      label: "用户确认作息",
+      effectiveFrom: config.semesterStart,
+      periods: config.periods.map((period) => ({ ...period })),
+    });
+  } else {
+    const primary = timetable.term.periodSchedules[0]!;
+    if (timetable.term.periodSchedules.length === 1) primary.effectiveFrom = config.semesterStart;
+    primary.periods = config.periods.map((period) => ({ ...period }));
+  }
+  timetable.validation = validateTimetableV2(timetable);
+  state.v2 = timetable;
+  return timetable;
+}
+
 function renderPeriodGrid(): void {
   periodGrid.replaceChildren();
   for (const period of config.periods) {
@@ -214,6 +319,7 @@ function syncConfigFields(): void {
   calendarTitle.value = config.title;
   semesterStart.value = config.semesterStart;
   alarmMinutes.value = String(config.alarmMinutes);
+  teachingWeeksInput.value = String(config.teachingWeeks ?? 20);
   renderPeriodGrid();
 }
 
@@ -268,7 +374,7 @@ function showParseFailure(error: unknown): void {
 }
 
 async function addIssueForBuild(build: BuildResult): Promise<void> {
-  const parseIssues = state.parsed?.issues ?? [];
+  const parseIssues = state.parsed?.issues ?? (state.v2 ? v2Issues(state.v2) : []);
   renderIssueBox([...parseIssues, ...build.issues]);
 }
 
@@ -374,14 +480,214 @@ function renderConflicts(build: BuildResult): void {
   conflictAck.checked = false;
 }
 
+interface StoredGoogleCalendar extends GoogleCalendarInfo {
+  termId: string;
+  createdAt: string;
+}
+
+const GOOGLE_CALENDAR_STORE = "terics.google.calendars.v1";
+const GOOGLE_LAST_SYNC_STORE = "terics.google.last-sync.v1";
+
+function readStoredGoogleCalendars(): StoredGoogleCalendar[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(GOOGLE_CALENDAR_STORE) ?? "[]") as unknown;
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is StoredGoogleCalendar => {
+      const candidate = item as Partial<StoredGoogleCalendar>;
+      return Boolean(candidate.id && candidate.summary && candidate.termId && candidate.createdAt);
+    });
+  } catch {
+    return [];
+  }
+}
+
+function storeGoogleCalendar(calendar: StoredGoogleCalendar): void {
+  const calendars = readStoredGoogleCalendars().filter((item) => item.id !== calendar.id);
+  calendars.push(calendar);
+  localStorage.setItem(GOOGLE_CALENDAR_STORE, JSON.stringify(calendars));
+  renderGoogleCalendarOptions(calendar.id);
+}
+
+function renderGoogleCalendarOptions(selectedId = googleCalendarSelect.value): void {
+  googleCalendarSelect.replaceChildren(new Option("选择 terics 日历", ""));
+  for (const calendar of readStoredGoogleCalendars()) {
+    googleCalendarSelect.append(new Option(calendar.summary, calendar.id));
+  }
+  if (!googleCalendarSelect.value && selectedId) googleCalendarSelect.value = selectedId;
+  const hasSelection = Boolean(googleCalendarSelect.value);
+  googleCreateCalendar.disabled = !googleClient;
+  googlePlanSync.disabled = !googleClient || !hasSelection;
+}
+
+function invalidateGooglePlan(): void {
+  googleCurrentPlan = null;
+  googlePlanPanel.hidden = true;
+  googleDeleteConfirm.checked = false;
+}
+
+async function ensureV2Timetable(): Promise<NormalizedTimetableV2> {
+  if (state.v2) return applyConfigToV2() ?? state.v2;
+  if (!state.parsed) throw new Error("请先解析文件或导入 .terics.json");
+  const parsed = state.parsed;
+  const meetingWeeks = parsed.courses.flatMap((course) => course.weeks);
+  state.v2 = await rawCoursesToV2(parsed, {
+    sourceKind: "web",
+    adapterId: `web-file-${parsed.format}`,
+    adapterVersion: "0.5.0",
+    sourceUrl: window.location.href,
+    title: config.title,
+    semesterStart: config.semesterStart,
+    periods: config.periods,
+    teachingWeeks: Math.max(1, ...meetingWeeks),
+  });
+  return applyConfigToV2() ?? state.v2;
+}
+
+function setupGooglePanel(): void {
+  if (!googleOAuthConfigured()) {
+    googleUnavailable.hidden = false;
+    googleConfigured.hidden = true;
+    googleConfigState.textContent = "OAuth 未配置 · ICS 可用";
+    return;
+  }
+  googleUnavailable.hidden = true;
+  googleConfigured.hidden = false;
+  googleConfigState.textContent = "OAuth 已配置 · 内存令牌";
+  renderGoogleCalendarOptions();
+}
+
+async function connectGoogle(): Promise<void> {
+  googleConnect.disabled = true;
+  googleConfigState.textContent = "正在授权…";
+  try {
+    const token = currentGoogleAccessToken() ?? (await requestGoogleAccessToken());
+    googleClient = new GoogleCalendarRestClient(token);
+    try {
+      const remote = await googleClient.listCalendars();
+      for (const calendar of remote) {
+        if (calendar.summary.startsWith("terics /") && !readStoredGoogleCalendars().some((item) => item.id === calendar.id)) {
+          storeGoogleCalendar({ ...calendar, termId: "unknown", createdAt: new Date().toISOString() });
+        }
+      }
+    } catch {
+      // A narrow app-created scope may not allow full calendar listing; local records still work.
+    }
+    renderGoogleCalendarOptions();
+    googleConfigState.textContent = "已连接 · 令牌仅保存在内存";
+    showToast("Google 测试账户已连接；访问令牌不会写入 localStorage");
+  } catch (error) {
+    googleConfigState.textContent = "授权失败";
+    showToast(error instanceof Error ? error.message : String(error), "error");
+  } finally {
+    googleConnect.disabled = false;
+  }
+}
+
+async function createGoogleCalendar(): Promise<void> {
+  if (!googleClient) return;
+  googleCreateCalendar.disabled = true;
+  try {
+    const info = await googleClient.createCalendar(`terics / ${config.title}`, TIMEZONE);
+    storeGoogleCalendar({ ...info, termId: "pending", createdAt: new Date().toISOString() });
+    googleCalendarSelect.value = info.id;
+    googlePlanSync.disabled = false;
+    showToast(`已创建独立日历：${info.summary}`);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), "error");
+  } finally {
+    googleCreateCalendar.disabled = !googleClient;
+  }
+}
+
+async function previewGoogleSync(): Promise<void> {
+  if (!googleClient) {
+    showToast("请先连接 Google 账户", "error");
+    return;
+  }
+  const calendarId = googleCalendarSelect.value;
+  if (!calendarId) {
+    showToast("请选择独立 terics 日历", "error");
+    return;
+  }
+  googlePlanSync.disabled = true;
+  googleSyncStatus.textContent = "正在读取 Google 事件…";
+  try {
+    const timetable = await ensureV2Timetable();
+    if (timetable.validation.status === "failed") throw new Error("课表验证失败，禁止同步");
+    const events = await buildV2Events(timetable);
+    const existing = await googleClient.listManagedEvents(calendarId, timetable.term.termId);
+    const plan = await planGoogleSync(timetable, events.events, existing, calendarId, true);
+    googleCurrentPlan = plan;
+    googleCreateCount.textContent = String(plan.creates.length);
+    googleUpdateCount.textContent = String(plan.updates.length);
+    googleSkipCount.textContent = String(plan.skips.length);
+    googleDeleteCount.textContent = String(plan.deletes.length);
+    googleWarningList.replaceChildren();
+    for (const warning of plan.warnings) {
+      const item = document.createElement("li");
+      item.textContent = warning;
+      googleWarningList.append(item);
+    }
+    googleWarningBox.hidden = plan.warnings.length === 0;
+    googleDeleteConfirmRow.hidden = plan.deletes.length === 0;
+    googleDeleteConfirm.checked = false;
+    googlePlanPanel.hidden = false;
+    googleApplySync.disabled = plan.blocked || plan.deletes.length > 0;
+    googleSyncStatus.textContent = plan.blocked ? "数据完整性检查阻止同步" : "预览完成，等待确认";
+  } catch (error) {
+    googleSyncStatus.textContent = "预览失败";
+    showToast(error instanceof Error ? error.message : String(error), "error");
+  } finally {
+    googlePlanSync.disabled = false;
+  }
+}
+
+async function applyGoogleSync(): Promise<void> {
+  if (!googleClient || !googleCurrentPlan) return;
+  const plan = googleCurrentPlan;
+  googleApplySync.disabled = true;
+  googleSyncStatus.textContent = "正在执行…";
+  try {
+    const result = await executeSyncPlan(googleClient, plan, googleDeleteConfirm.checked);
+    const summary = {
+      at: new Date().toISOString(),
+      calendarId: plan.calendarId,
+      termId: plan.termId,
+      ...result,
+    };
+    localStorage.setItem(GOOGLE_LAST_SYNC_STORE, JSON.stringify(summary));
+    googleSyncStatus.textContent = `完成 · 新建 ${result.created} · 更新 ${result.updated} · 跳过 ${result.skipped} · 删除 ${result.deleted}`;
+    googleDeleteConfirm.checked = false;
+    if (result.errors.length > 0) {
+      showToast(`${result.errors.length} 个同步操作失败；详见控制台警告`, "error");
+      console.warn("terics Google sync errors", result.errors);
+    } else {
+      showToast("Google Calendar 增量同步完成");
+    }
+  } catch (error) {
+    googleSyncStatus.textContent = "同步失败";
+    showToast(error instanceof Error ? error.message : String(error), "error");
+  } finally {
+    googleApplySync.disabled = plan.blocked || (plan.deletes.length > 0 && !googleDeleteConfirm.checked);
+  }
+}
+
 async function rebuild(): Promise<void> {
-  if (!state.parsed) return;
-  const parseResult = state.parsed;
+  if (!state.parsed && !state.v2) return;
   const generation = ++rebuildGeneration;
+  invalidateGooglePlan();
   state.busy = true;
   exportButton.disabled = true;
-  const courses: RawCourse[] = parseResult.courses.map((course) => ({ ...course, weeks: [...course.weeks] }));
-  const build = await buildEvents(config, courses);
+  let build: BuildResult;
+  if (state.v2) {
+    const timetable = applyConfigToV2();
+    if (!timetable) return;
+    build = v2BuildToLegacy(await buildV2Events(timetable));
+  } else {
+    const parseResult = state.parsed!;
+    const courses: RawCourse[] = parseResult.courses.map((course) => ({ ...course, weeks: [...course.weeks] }));
+    build = await buildEvents(config, courses);
+  }
   if (generation !== rebuildGeneration) return;
   state.busy = false;
   state.build = build;
@@ -420,12 +726,52 @@ async function rebuild(): Promise<void> {
   updateExportButton();
 }
 
+async function processV2Timetable(name: string, size: number, timetable: NormalizedTimetableV2): Promise<void> {
+  if (state.busy) return;
+  state.busy = true;
+  state.sourceName = name;
+  state.sourceSize = size;
+  state.parsed = null;
+  state.v2 = timetable;
+  state.build = null;
+  config.title = timetable.term.termName || config.title;
+  config.semesterStart = timetable.term.semesterStart;
+  config.teachingWeeks = timetable.term.teachingWeeks;
+  config.periods = timetable.term.periodSchedules[0]?.periods.map((period) => ({ ...period })) ?? config.periods;
+  syncConfigFields();
+  settingsPanel.classList.remove("is-dormant");
+  previewPanel.classList.remove("is-dormant");
+  renderV2Readout(timetable);
+  renderIssueBox(v2Issues(timetable));
+  setStatus("success", `terics v2 · ${timetable.source.adapterId}`);
+  setActiveStep("timing");
+  state.busy = false;
+  await rebuild();
+  showToast(`已导入 ${timetable.courses.length} 门课程、${timetable.validation.completeness.meetingCount} 个上课实例`);
+}
+
 async function processBytes(name: string, bytes: Uint8Array): Promise<void> {
   if (state.busy) return;
+  const textPreview = new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(0, Math.min(bytes.length, 4096)));
+  if (/^\s*\{/.test(textPreview)) {
+    try {
+      const timetable = parseTericsJson(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+      await processV2Timetable(name, bytes.byteLength, timetable);
+      return;
+    } catch (error) {
+      if (/schemaVersion|terics v2|JSON/i.test(error instanceof Error ? error.message : "")) {
+        state.sourceName = name;
+        state.sourceSize = bytes.byteLength;
+        showParseFailure(error);
+        return;
+      }
+    }
+  }
   state.busy = true;
   state.sourceName = name;
   state.sourceSize = bytes.byteLength;
   state.parsed = null;
+  state.v2 = null;
   state.build = null;
   settingsPanel.classList.add("is-dormant");
   previewPanel.classList.add("is-dormant");
@@ -437,6 +783,7 @@ async function processBytes(name: string, bytes: Uint8Array): Promise<void> {
   try {
     const parsed = await parseTimetableFile({ fileName: name, bytes });
     state.parsed = parsed;
+    config.teachingWeeks = Math.max(1, ...parsed.courses.flatMap((course) => course.weeks));
     state.busy = false;
     setStatus("success", `${parsed.formatLabel} · 已识别`);
     renderParseReadout(parsed);
@@ -469,6 +816,7 @@ async function loadSample(kind: string, button: HTMLButtonElement): Promise<void
     csv: "csv-sample.csv",
     html: "html-list-sample.xls",
     xlsx: "xlsx-grid-sample.xlsx",
+    json: "terics-example.terics.json",
   };
   const sample = samples[kind];
   if (!sample) return;
@@ -564,6 +912,16 @@ alarmMinutes.addEventListener("change", () => {
   config.alarmMinutes = Number(alarmMinutes.value);
   void rebuild();
 });
+teachingWeeksInput.addEventListener("change", () => {
+  const value = Number(teachingWeeksInput.value);
+  if (!Number.isInteger(value) || value < 1 || value > 30) {
+    teachingWeeksInput.value = String(config.teachingWeeks ?? 20);
+    showToast("教学周数必须为 1–30", "error");
+    return;
+  }
+  config.teachingWeeks = value;
+  void rebuild();
+});
 periodGrid.addEventListener("change", (event) => {
   if (event.target instanceof HTMLInputElement) updatePeriodFromInput(event.target);
 });
@@ -575,24 +933,50 @@ resetPeriods.addEventListener("click", () => {
 weekFilter.addEventListener("change", renderPreview);
 courseFilter.addEventListener("input", renderPreview);
 conflictAck.addEventListener("change", updateExportButton);
+googleConnect.addEventListener("click", () => void connectGoogle());
+googleCreateCalendar.addEventListener("click", () => void createGoogleCalendar());
+googleCalendarSelect.addEventListener("change", () => {
+  googlePlanSync.disabled = !googleClient || !googleCalendarSelect.value;
+  invalidateGooglePlan();
+});
+googlePlanSync.addEventListener("click", () => void previewGoogleSync());
+googleDeleteConfirm.addEventListener("change", () => {
+  if (!googleCurrentPlan) return;
+  googleApplySync.disabled = googleCurrentPlan.blocked || (googleCurrentPlan.deletes.length > 0 && !googleDeleteConfirm.checked);
+});
+googleApplySync.addEventListener("click", () => void applyGoogleSync());
+window.addEventListener("pagehide", () => clearGoogleToken());
 
 exportButton.addEventListener("click", async () => {
-  if (!state.parsed || !state.build || state.build.events.length === 0) return;
+  if ((!state.parsed && !state.v2) || !state.build || state.build.events.length === 0) return;
   exportButton.disabled = true;
   exportState.textContent = "正在生成 ICS…";
   try {
-    const output = await generateIcs(config, state.parsed.courses);
-    const blob = new Blob([output.ics], { type: "text/calendar;charset=utf-8" });
+    let icsText: string;
+    let fileName: string;
+    let exportedEvents: number;
+    if (state.v2) {
+      const output = await generateIcsV2(applyConfigToV2() ?? state.v2, { alarmMinutes: config.alarmMinutes });
+      icsText = output.ics;
+      exportedEvents = output.events.length;
+      fileName = suggestedIcsV2FileName(state.v2);
+    } else {
+      const output = await generateIcs(config, state.parsed!.courses);
+      icsText = output.ics;
+      exportedEvents = output.build.events.length;
+      fileName = suggestedFileName(config);
+    }
+    const blob = new Blob([icsText], { type: "text/calendar;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = suggestedFileName(config);
+    anchor.download = fileName;
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
-    state.lastExportedCount = output.build.events.length;
-    exportState.textContent = `已生成 ${output.build.events.length} 个事件 · ${(blob.size / 1024).toFixed(1)} KiB`;
+    state.lastExportedCount = exportedEvents;
+    exportState.textContent = `已生成 ${exportedEvents} 个事件 · ${(blob.size / 1024).toFixed(1)} KiB`;
     setActiveStep("export");
     showToast(`ICS 已生成：${anchor.download}`);
   } catch (error) {
@@ -614,3 +998,17 @@ previewPanel.classList.add("is-dormant");
 setStatus("idle", "等待文件");
 setActiveStep("select");
 clearCalendarOutputs();
+setupGooglePanel();
+async function handleHandoffHash(): Promise<void> {
+  try {
+    const handoff = readTericsHash(window.location.hash);
+    if (!handoff) return;
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    await processV2Timetable("extension-handoff.terics.json", 0, handoff);
+  } catch (error) {
+    showParseFailure(error);
+  }
+}
+
+window.addEventListener("hashchange", () => void handleHandoffHash());
+void handleHandoffHash();

@@ -62,6 +62,16 @@ describe("calendar event generation", () => {
     expect(second.events[0]?.start).toBe("08:10");
   });
 
+  it("keeps legacy event identity independent of mutable display fields", async () => {
+    const courses = await sampleCourses();
+    const before = await buildEvents(config(), courses);
+    const changed = courses.map((course, index) =>
+      index === 0 ? { ...course, name: `${course.name}-改名`, teacher: "变更教师", location: "变更教室" } : course,
+    );
+    const after = await buildEvents(config(), changed);
+    expect(after.events[0]?.uid).toBe(before.events[0]?.uid);
+  });
+
   it("detects overlapping courses on each affected date", async () => {
     const parsed = await parseTimetableFile({
       fileName: "conflict.csv",

@@ -1,0 +1,208 @@
+{
+  "schemaVersion": "2.0",
+  "source": {
+    "kind": "extension",
+    "adapterId": "whut-wisedu-jwapp",
+    "adapterVersion": "0.5.0",
+    "schoolId": "whut",
+    "schoolName": "武汉理工大学",
+    "platform": "金智 Wisedu jwapp",
+    "sourceUrl": "https://jwxt.whut.edu.cn/jwapp/sys/homeapp/index.do",
+    "extractedAt": "2026-08-01T00:00:00.000Z"
+  },
+  "term": {
+    "termId": "2026-2027-1",
+    "academicYear": "2026-2027",
+    "termCode": "1",
+    "termName": "2026 秋季课表",
+    "semesterStart": "2026-08-31",
+    "teachingWeeks": 20,
+    "timezone": "Asia/Shanghai",
+    "campus": "南湖校区",
+    "periodSchedules": [
+      {
+        "id": "whut-periods-demo",
+        "label": "示例作息",
+        "effectiveFrom": "2026-08-31",
+        "periods": [
+          {
+            "index": 1,
+            "start": "08:00",
+            "end": "08:45"
+          },
+          {
+            "index": 2,
+            "start": "08:55",
+            "end": "09:40"
+          },
+          {
+            "index": 3,
+            "start": "10:00",
+            "end": "10:45"
+          },
+          {
+            "index": 4,
+            "start": "10:55",
+            "end": "11:40"
+          },
+          {
+            "index": 5,
+            "start": "14:00",
+            "end": "14:45"
+          },
+          {
+            "index": 6,
+            "start": "14:55",
+            "end": "15:40"
+          },
+          {
+            "index": 7,
+            "start": "16:00",
+            "end": "16:45"
+          },
+          {
+            "index": 8,
+            "start": "16:55",
+            "end": "17:40"
+          },
+          {
+            "index": 9,
+            "start": "19:00",
+            "end": "19:45"
+          },
+          {
+            "index": 10,
+            "start": "19:55",
+            "end": "20:40"
+          },
+          {
+            "index": 11,
+            "start": "20:50",
+            "end": "21:35"
+          },
+          {
+            "index": 12,
+            "start": "21:45",
+            "end": "22:30"
+          },
+          {
+            "index": 13,
+            "start": "22:40",
+            "end": "23:25"
+          }
+        ]
+      }
+    ]
+  },
+  "courses": [
+    {
+      "id": "course-demo-cs101",
+      "name": "数据结构",
+      "category": "学科必修",
+      "credits": 3,
+      "teachingClass": "计算机2501",
+      "source": {
+        "adapterId": "whut-wisedu-jwapp",
+        "adapterVersion": "0.5.0",
+        "schoolId": "whut",
+        "sourceCourseId": "CS101|20261-01",
+        "sourceRef": "kb-demo-01"
+      },
+      "meetings": [
+        {
+          "id": "meeting-demo-cs101-01",
+          "teacher": "测试教师甲",
+          "room": "南湖-爱特楼-208",
+          "campus": "南湖校区",
+          "weekday": 2,
+          "startPeriod": 1,
+          "endPeriod": 2,
+          "weeks": [
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "weekRule": "6-15周",
+          "source": {
+            "adapterId": "whut-wisedu-jwapp",
+            "adapterVersion": "0.5.0",
+            "sourceCourseId": "CS101|20261-01",
+            "sourceRef": "kb-demo-01"
+          }
+        }
+      ]
+    },
+    {
+      "id": "course-demo-art",
+      "name": "世界美术欣赏",
+      "category": "公共选修",
+      "credits": 1.5,
+      "teachingClass": "美术-1班",
+      "meetings": [
+        {
+          "id": "meeting-demo-art-01",
+          "teacher": "测试教师乙",
+          "room": "北院-艺术楼-101",
+          "campus": "南湖校区",
+          "weekday": 5,
+          "startPeriod": 11,
+          "endPeriod": 13,
+          "weeks": [
+            12
+          ],
+          "weekRule": "12周"
+        }
+      ]
+    }
+  ],
+  "overrides": [],
+  "metadata": {
+    "extractedAt": "2026-08-01T00:00:00.000Z",
+    "sourceKind": "extension",
+    "method": "api",
+    "sourceUrl": "https://jwxt.whut.edu.cn/jwapp/sys/homeapp/index.do",
+    "rawCount": 2,
+    "parsedCount": 2,
+    "skippedCount": 0,
+    "adapterId": "whut-wisedu-jwapp",
+    "adapterVersion": "0.5.0",
+    "schoolId": "whut",
+    "schoolName": "武汉理工大学",
+    "platform": "金智 Wisedu jwapp",
+    "userNote": "脱敏示例，不含真实学生数据"
+  },
+  "validation": {
+    "status": "verified",
+    "checks": [
+      {
+        "id": "schema",
+        "status": "pass",
+        "message": "数据 Schema"
+      },
+      {
+        "id": "courses",
+        "status": "pass",
+        "message": "课程数量"
+      }
+    ],
+    "completeness": {
+      "courseCount": 2,
+      "meetingCount": 2,
+      "missingTeacher": 0,
+      "missingRoom": 0,
+      "missingPeriods": 0,
+      "unknownWeekRules": 0,
+      "adjustmentDataAvailable": false
+    }
+  },
+  "warnings": [
+    "这是脱敏示例数据，不是真实武汉理工大学课表。"
+  ]
+}

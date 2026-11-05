@@ -16,4 +16,18 @@ describe("shared timetable schema", () => {
     invalid.courses[0].weekday = 8;
     expect(validate(invalid)).toBe(false);
   });
+
+  it("validates .terics.json v2 samples and override union", () => {
+    const schema = JSON.parse(readFileSync(resolve("schema/timetable-v2.schema.json"), "utf8"));
+    const ajv = new Ajv2020({ allErrors: true, strict: true });
+    addFormats(ajv);
+    const validate = ajv.compile(schema);
+    for (const file of ["fixtures/exchange/terics-example.terics.json", "fixtures/exchange/overrides.terics.json"]) {
+      const example = JSON.parse(readFileSync(resolve(file), "utf8"));
+      expect(validate(example), `${file}: ${JSON.stringify(validate.errors)}`).toBe(true);
+    }
+    const invalid = JSON.parse(readFileSync(resolve("fixtures/exchange/terics-example.terics.json"), "utf8"));
+    invalid.access_token = "secret";
+    expect(validate(invalid)).toBe(false);
+  });
 });
