@@ -138,3 +138,99 @@ h1 {
 footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; color: var(--muted); font-family: var(--mono); font-size: 7px; }
 .link-button { padding: 0; border: 0; color: var(--muted); background: none; font-family: var(--mono); font-size: 8px; text-decoration: underline; cursor: pointer; }
 [hidden] { display: none !important; }
+
+/* Registrar week strip and compact agenda */
+:root {
+  --blackboard: #111610;
+  --syllabus: #f3efe1;
+  --ledger: #e6e1d2;
+  --registration-orange: #e9521d;
+  --chalk-green: #b9e769;
+  --cancel-vermilion: #b83224;
+  --room-ink: #556b73;
+  --warning-ochre: #a76400;
+  --ink: var(--blackboard);
+  --paper: var(--syllabus);
+  --paper-2: var(--ledger);
+  --accent: var(--registration-orange);
+  --signal: var(--chalk-green);
+  --danger: var(--cancel-vermilion);
+  --warn: var(--warning-ochre);
+}
+.primary { min-height: 42px; }
+.actions button { min-height: 38px; }
+.provenance-line {
+  margin: 8px 0 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+  line-height: 1.5;
+}
+.week-board {
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  background: #fffdf6;
+}
+.week-board-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-2);
+}
+.week-board-head span { color: var(--muted); font-family: var(--mono); font-size: 8px; letter-spacing: .1em; }
+.week-board-head strong { font-size: 10px; font-weight: 600; }
+.week-ruler { display: flex; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
+.week-notch {
+  flex: 0 0 42px;
+  min-height: 44px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.week-notch:hover { color: var(--ink); background: rgb(17 22 16 / 5%); }
+.week-notch[aria-selected="true"] { color: #fffaf0; background: var(--registration-orange); }
+.week-agenda { display: flex; flex-direction: column; }
+.agenda-item {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 30px;
+  gap: 7px;
+  align-items: center;
+  min-height: 47px;
+  padding: 7px 9px;
+  border: 0;
+  border-bottom: 1px solid rgb(142 141 130 / 45%);
+  border-left: 3px solid var(--registration-orange);
+  color: var(--ink);
+  background: #fff9f3;
+  text-align: left;
+  cursor: pointer;
+}
+.agenda-item:hover { background: #fff3e8; }
+.agenda-item:last-child { border-bottom: 0; }
+.agenda-item.kind-rescheduled { border-left-color: var(--warning-ochre); background: #fbf3df; }
+.agenda-item.kind-makeup { border-left-color: #6f8d36; background: #f1f6e5; }
+.agenda-item.kind-changed { border-left-color: var(--room-ink); background: #eef3f2; }
+.agenda-item.is-conflict { outline: 2px solid var(--cancel-vermilion); outline-offset: -3px; }
+.agenda-time, .agenda-code { color: var(--muted); font-family: var(--mono); font-size: 8px; font-variant-numeric: tabular-nums; }
+.agenda-body { min-width: 0; }
+.agenda-body strong { display: block; overflow: hidden; font-size: 10px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-body small { display: block; overflow: hidden; margin-top: 2px; color: var(--room-ink); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.week-empty { padding: 14px 10px; color: var(--muted); font-size: 9px; text-align: center; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+.agenda-item.expanded { background: #fffdf6; }
+.agenda-item.expanded .agenda-body small { white-space: normal; }

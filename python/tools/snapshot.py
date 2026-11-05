@@ -85,8 +85,10 @@ for fixture in FIXTURES:
 
 
 
-v2_timetable = parse_terics_json((ROOT / "fixtures/exchange/overrides.terics.json").read_text(encoding="utf-8"))
-v2_build = build_v2_events(v2_timetable)
+v2_fixtures = [
+    "fixtures/exchange/overrides.terics.json",
+    "fixtures/exchange/whut-real-shape.terics.json",
+]
 def v2_event_dict(event: TimetableEventV2) -> dict[str, object]:
     return {
         "uid": event.uid,
@@ -102,38 +104,41 @@ def v2_event_dict(event: TimetableEventV2) -> dict[str, object]:
         "end": event.end,
     }
 
-snapshot.append(
-    {
-        "fixture": "fixtures/exchange/overrides.terics.json",
-        "format": "terics-v2",
-        "courses": sorted(
-            [
-                {
-                    "id": course["id"],
-                    "name": course["name"],
-                    "meetings": sorted(
-                        [
-                            {
-                                "id": meeting["id"],
-                                "teacher": meeting.get("teacher", ""),
-                                "room": meeting.get("room", ""),
-                                "weekday": meeting["weekday"],
-                                "startPeriod": meeting["startPeriod"],
-                                "endPeriod": meeting["endPeriod"],
-                                "weeks": list(meeting["weeks"]),
-                            }
-                            for meeting in course["meetings"]
-                        ],
-                        key=lambda item: str(item["id"]),
-                    ),
-                }
-                for course in v2_timetable["courses"]
-            ],
-            key=lambda item: str(item["id"]),
-        ),
-        "events": sorted((v2_event_dict(event) for event in v2_build.events), key=lambda item: str(item["uid"])),
-        "conflictCount": len(v2_build.conflicts),
-    }
-)
+for fixture in v2_fixtures:
+    v2_timetable = parse_terics_json((ROOT / fixture).read_text(encoding="utf-8"))
+    v2_build = build_v2_events(v2_timetable)
+    snapshot.append(
+        {
+            "fixture": fixture,
+            "format": "terics-v2",
+            "courses": sorted(
+                [
+                    {
+                        "id": course["id"],
+                        "name": course["name"],
+                        "meetings": sorted(
+                            [
+                                {
+                                    "id": meeting["id"],
+                                    "teacher": meeting.get("teacher", ""),
+                                    "room": meeting.get("room", ""),
+                                    "weekday": meeting["weekday"],
+                                    "startPeriod": meeting["startPeriod"],
+                                    "endPeriod": meeting["endPeriod"],
+                                    "weeks": list(meeting["weeks"]),
+                                }
+                                for meeting in course["meetings"]
+                            ],
+                            key=lambda item: str(item["id"]),
+                        ),
+                    }
+                    for course in v2_timetable["courses"]
+                ],
+                key=lambda item: str(item["id"]),
+            ),
+            "events": sorted((v2_event_dict(event) for event in v2_build.events), key=lambda item: str(item["uid"])),
+            "conflictCount": len(v2_build.conflicts),
+        }
+    )
 
 sys.stdout.write(json.dumps(snapshot, ensure_ascii=False, indent=2))

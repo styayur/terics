@@ -5,7 +5,7 @@ terics has two separate paths:
 1. **Offline ICS** — always available, no Google configuration required.
 2. **Optional incremental sync** — uses official Google OAuth and Calendar API, only when a client ID/account is configured by the user.
 
-Real-account sync was **not verified** in the v0.5.0-rc.1 release environment. The code path and deletion safeguards are mock-tested.
+Real-account sync was **not verified** in the v0.5.0-rc.2 release environment. The code path and deletion safeguards are mock-tested.
 
 ## Offline ICS
 

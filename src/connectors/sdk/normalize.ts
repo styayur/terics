@@ -17,6 +17,8 @@ export interface FinalizeOptions {
   sourceKind: "extension" | "desktop" | "web";
   sourceUrl?: string;
   fallbackPeriods?: PeriodSchedule["periods"];
+  /** Fixed timestamp for reproducible fixtures and exports. */
+  extractedAt?: string;
 }
 
 export function finalizeConnectorExtraction(
@@ -25,23 +27,25 @@ export function finalizeConnectorExtraction(
   semester: SemesterSelection,
   options: FinalizeOptions,
 ): NormalizedTimetableV2 {
-  if (!isMonday(semester.semesterStart)) {
+  const draft: ExtractionDraft = extraction.draft;
+  const authoritativeTerm = draft.termSource === "adapter";
+  const semesterStart = authoritativeTerm ? draft.term.semesterStart : semester.semesterStart;
+  if (!isMonday(semesterStart)) {
     throw new Error("学期开始日期必须是第 1 周周一");
   }
-  const draft: ExtractionDraft = extraction.draft;
   const periodSchedules =
     draft.term.periodSchedules && draft.term.periodSchedules.length > 0
       ? draft.term.periodSchedules
       : [
           {
-            id: `periods-${semester.semesterStart}`,
+            id: `periods-${semesterStart}`,
             label: "用户确认的默认作息",
-            effectiveFrom: semester.semesterStart,
+            effectiveFrom: semesterStart,
             periods: (options.fallbackPeriods ?? DEFAULT_PERIODS).map((period) => ({ ...period })),
           },
         ];
   const maxWeek = Math.max(1, ...draft.courses.flatMap((course) => course.meetings.flatMap((meeting) => meeting.weeks)));
-  const now = new Date().toISOString();
+  const now = options.extractedAt ?? new Date().toISOString();
   const sourceUrl = options.sourceUrl ? sanitizeSourceUrl(options.sourceUrl) : undefined;
   const timetable: NormalizedTimetableV2 = {
     schemaVersion: EXCHANGE_SCHEMA_VERSION,
@@ -57,13 +61,17 @@ export function finalizeConnectorExtraction(
     },
     term: {
       ...draft.term,
-      academicYear: semester.academicYear ?? draft.term.academicYear ?? inferAcademicYear(semester.semesterStart),
+      academicYear: authoritativeTerm
+        ? draft.term.academicYear
+        : semester.academicYear ?? draft.term.academicYear ?? inferAcademicYear(semesterStart),
       termCode: draft.term.termCode && draft.term.termCode !== "unknown" ? draft.term.termCode : semester.termCode ?? "unknown",
-      termName: semester.termName || draft.term.termName,
-      semesterStart: semester.semesterStart,
-      teachingWeeks: semester.teachingWeeks ?? draft.term.teachingWeeks ?? maxWeek,
-      timezone: semester.timezone ?? draft.term.timezone ?? "Asia/Shanghai",
-      campus: semester.campus ?? draft.term.campus,
+      termName: authoritativeTerm ? draft.term.termName : semester.termName || draft.term.termName,
+      semesterStart,
+      teachingWeeks: authoritativeTerm
+        ? draft.term.teachingWeeks ?? maxWeek
+        : semester.teachingWeeks ?? draft.term.teachingWeeks ?? maxWeek,
+      timezone: authoritativeTerm ? draft.term.timezone : semester.timezone ?? draft.term.timezone ?? "Asia/Shanghai",
+      campus: authoritativeTerm ? draft.term.campus ?? semester.campus : semester.campus ?? draft.term.campus,
       periodSchedules,
     },
     courses: draft.courses,

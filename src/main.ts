@@ -1,10 +1,11 @@
 import "./styles.css";
 import { buildEvents } from "./core/course";
-import { mondayOfIso, weekdayZh } from "./core/dates";
+import { addDaysIso, daysBetween, mondayOfIso, parseIsoDate, weekdayZh } from "./core/dates";
 import { TericsParseError } from "./core/errors";
 import { generateIcs, suggestedFileName } from "./core/ics";
 import { parseTimetableFile } from "./core/parsers";
 import {
+  APP_VERSION,
   DEFAULT_PERIODS,
   TIMEZONE,
   type BuildResult,
@@ -13,6 +14,7 @@ import {
   type ParseResult,
   type RawCourse,
   type SemesterConfig,
+  type PeriodTime,
 } from "./core/types";
 import { buildV2Events } from "./v2/events";
 import { parseTericsJson, readTericsHash } from "./v2/exchange";
@@ -27,12 +29,23 @@ import { executeSyncPlan, planGoogleSync, type GoogleCalendarInfo, type SyncPlan
 const STEP_ORDER = ["select", "detect", "timing", "preview", "export"] as const;
 type StepName = (typeof STEP_ORDER)[number];
 
+type PreviewKind = "normal" | "cancelled" | "rescheduled" | "makeup" | "changed";
+
+interface PreviewBlock extends CalendarEvent {
+  kind: PreviewKind;
+  conflict: boolean;
+  eventIndex?: number;
+}
+
 interface AppState {
   parsed: ParseResult | null;
   v2: NormalizedTimetableV2 | null;
   sourceName: string;
   sourceSize: number;
   build: BuildResult | null;
+  previewBlocks: PreviewBlock[];
+  selectedWeek: number | null;
+  previewMode: "grid" | "list";
   issues: ParseIssue[];
   busy: boolean;
   lastExportedCount: number;
@@ -68,8 +81,30 @@ const periodGrid = element<HTMLDivElement>("period-grid");
 const resetPeriods = element<HTMLButtonElement>("reset-periods");
 const weekFilter = element<HTMLSelectElement>("week-filter");
 const courseFilter = element<HTMLInputElement>("course-filter");
+const weekRuler = element<HTMLDivElement>("week-ruler");
+const currentWeekLabel = element<HTMLElement>("current-week-label");
 const previewEmpty = element<HTMLDivElement>("preview-empty");
+const timetableShell = element<HTMLElement>("timetable-shell");
+const timetableGrid = element<HTMLDivElement>("timetable-grid");
+const previewListSection = element<HTMLElement>("preview-list-section");
 const previewTableWrap = element<HTMLDivElement>("preview-table-wrap");
+const courseDetail = element<HTMLElement>("course-detail");
+const courseDetailClose = element<HTMLButtonElement>("course-detail-close");
+const courseDetailKind = element<HTMLElement>("course-detail-kind");
+const courseDetailTitle = element<HTMLElement>("course-detail-title");
+const courseDetailTime = element<HTMLElement>("course-detail-time");
+const courseDetailRoom = element<HTMLElement>("course-detail-room");
+const courseDetailTeacher = element<HTMLElement>("course-detail-teacher");
+const courseDetailWeeks = element<HTMLElement>("course-detail-weeks");
+const courseDetailSource = element<HTMLElement>("course-detail-source");
+const courseDetailNote = element<HTMLElement>("course-detail-note");
+const viewGridButton = element<HTMLButtonElement>("view-grid");
+const viewListButton = element<HTMLButtonElement>("view-list");
+const provenanceLedger = element<HTMLElement>("provenance-ledger");
+const provenanceSource = element<HTMLElement>("provenance-source");
+const provenanceTerm = element<HTMLElement>("provenance-term");
+const provenanceTime = element<HTMLElement>("provenance-time");
+const provenanceStatus = element<HTMLElement>("provenance-status");
 const eventTableBody = element<HTMLTableSectionElement>("event-table-body");
 const tableOverflowNote = element<HTMLDivElement>("table-overflow-note");
 const conflictBox = element<HTMLDivElement>("conflict-box");
@@ -110,6 +145,9 @@ const state: AppState = {
   sourceName: "",
   sourceSize: 0,
   build: null,
+  previewBlocks: [],
+  selectedWeek: null,
+  previewMode: "grid",
   issues: [],
   busy: false,
   lastExportedCount: 0,
@@ -136,6 +174,7 @@ let rebuildGeneration = 0;
 let toastTimer: number | undefined;
 let googleClient: GoogleCalendarRestClient | null = null;
 let googleCurrentPlan: SyncPlan | null = null;
+let activeDetailTrigger: HTMLElement | null = null;
 
 function setStatus(kind: "idle" | "working" | "success" | "error", text: string): void {
   parseStatus.className = `status-chip ${kind}`;
@@ -253,6 +292,12 @@ function v2BuildToLegacy(build: Awaited<ReturnType<typeof buildV2Events>>): Buil
     startDateTime: event.startDateTime,
     endDateTime: event.endDateTime,
     weekRule: event.weekRule,
+    courseId: event.courseId,
+    meetingId: event.meetingId,
+    campus: event.campus,
+    sourceAdapterId: event.source.adapterId,
+    sourceSchoolId: event.source.schoolId,
+    sourceTermId: event.source.termId,
   }));
   return { events, conflicts: build.conflicts, issues: build.issues };
 }
@@ -278,6 +323,393 @@ function applyConfigToV2(): NormalizedTimetableV2 | null {
   timetable.validation = validateTimetableV2(timetable);
   state.v2 = timetable;
   return timetable;
+}
+
+function currentTeachingWeek(): number {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const offset = daysBetween(config.semesterStart, today);
+  const maxWeek = Math.max(1, config.teachingWeeks ?? 18);
+  if (offset < 0) return 1;
+  const week = Math.floor(offset / 7) + 1;
+  return Math.min(maxWeek, Math.max(1, week));
+}
+
+function weekStart(week: number): string {
+  return addDaysIso(config.semesterStart, (week - 1) * 7);
+}
+
+function weekDateLabel(week: number): string {
+  const start = weekStart(week);
+  const end = addDaysIso(start, 6);
+  return `${start.slice(5).replace("-", "/")}–${end.slice(5).replace("-", "/")}`;
+}
+
+function weekForDate(date: string): number {
+  const offset = daysBetween(config.semesterStart, date);
+  return offset < 0 ? 0 : Math.floor(offset / 7) + 1;
+}
+
+function periodsForDate(date: string): PeriodTime[] {
+  if (state.v2) {
+    const schedule = [...state.v2.term.periodSchedules]
+      .filter((item) => item.effectiveFrom <= date && (!item.effectiveTo || date <= item.effectiveTo))
+      .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom))
+      .at(-1);
+    if (schedule) return schedule.periods.map((period) => ({ ...period }));
+  }
+  return config.periods.map((period) => ({ ...period }));
+}
+
+function blockKindLabel(kind: PreviewKind): string {
+  return {
+    normal: "正常",
+    cancelled: "停课",
+    rescheduled: "调课",
+    makeup: "补课",
+    changed: "变更",
+  }[kind];
+}
+
+function previewBlockFromCancel(
+  courseId: string,
+  meetingId: string,
+  overrideId: string,
+  date: string,
+  reason?: string,
+  room?: string,
+  teacher?: string,
+): PreviewBlock | null {
+  if (!state.v2) return null;
+  const course = state.v2.courses.find((item) => item.id === courseId);
+  const meeting = course?.meetings.find((item) => item.id === meetingId);
+  if (!course || !meeting) return null;
+  const periods = periodsForDate(date);
+  const start = meeting.startTime ?? periods.find((period) => period.index === meeting.startPeriod)?.start;
+  const end = meeting.endTime ?? periods.find((period) => period.index === meeting.endPeriod)?.end;
+  if (!start || !end) return null;
+  const week = weekForDate(date);
+  if (week < 1) return null;
+  return {
+    uid: `cancelled-${overrideId}`,
+    title: course.name,
+    teacher: teacher ?? meeting.teacher,
+    location: room ?? meeting.room,
+    note: reason || "已停课",
+    weekday: parseIsoDate(date).getUTCDay() || 7,
+    startPeriod: meeting.startPeriod,
+    endPeriod: meeting.endPeriod,
+    week,
+    date,
+    start,
+    end,
+    startDateTime: `${date.replaceAll("-", "")}T${start.replace(":", "")}00`,
+    endDateTime: `${date.replaceAll("-", "")}T${end.replace(":", "")}00`,
+    weekRule: meeting.weekRule,
+    courseId,
+    meetingId,
+    kind: "cancelled",
+    conflict: false,
+    sourceAdapterId: state.v2.source.adapterId,
+    sourceSchoolId: state.v2.source.schoolId,
+    sourceTermId: state.v2.term.termId,
+  };
+}
+
+function buildPreviewBlocks(build: BuildResult): PreviewBlock[] {
+  const conflictedIndexes = new Set(build.conflicts.flatMap((conflict) => conflict.eventIndexes));
+  const blocks: PreviewBlock[] = build.events.map((event, index) => {
+    let kind: PreviewKind = "normal";
+    if (state.v2 && event.courseId && event.meetingId) {
+      const overrides = state.v2.overrides.filter(
+        (override) => override.confirmed && override.courseId === event.courseId && override.meetingId === event.meetingId,
+      );
+      if (overrides.some((override) => override.type === "reschedule" && override.newDate === event.date)) {
+        kind = "rescheduled";
+      } else if (overrides.some((override) => override.type === "makeup" && override.newDate === event.date)) {
+        kind = "makeup";
+      } else if (
+        overrides.some(
+          (override) =>
+            (override.type === "room_change" || override.type === "teacher_change" || override.type === "period_change") &&
+            override.originalDate === event.date,
+        )
+      ) {
+        kind = "changed";
+      }
+    }
+    return { ...event, kind, conflict: conflictedIndexes.has(index), eventIndex: index };
+  });
+
+  if (state.v2) {
+    for (const override of state.v2.overrides) {
+      if (override.type !== "cancel" || !override.confirmed) continue;
+      const block = previewBlockFromCancel(
+        override.courseId,
+        override.meetingId,
+        override.id,
+        override.originalDate,
+        override.reason,
+      );
+      if (block) blocks.push(block);
+    }
+  }
+  return blocks.sort((left, right) => left.startDateTime.localeCompare(right.startDateTime) || left.title.localeCompare(right.title, "zh-CN"));
+}
+
+function renderProvenance(): void {
+  if (state.v2) {
+    const timetable = state.v2;
+    provenanceLedger.hidden = false;
+    provenanceSource.textContent = [timetable.source.schoolName, timetable.source.adapterId].filter(Boolean).join(" · ");
+    provenanceTerm.textContent = `${timetable.term.termId} · 第 1 周 ${timetable.term.semesterStart}`;
+    provenanceTime.textContent = new Date(timetable.source.extractedAt).toLocaleString("zh-CN", { hour12: false });
+    provenanceStatus.textContent = timetable.validation.status.toUpperCase();
+    provenanceStatus.dataset.status = timetable.validation.status;
+    return;
+  }
+  if (state.parsed) {
+    provenanceLedger.hidden = false;
+    provenanceSource.textContent = `${state.parsed.formatLabel} · ${state.sourceName}`;
+    provenanceTerm.textContent = `${config.title} · 第 1 周 ${config.semesterStart}`;
+    provenanceTime.textContent = `本地文件 · ${formatBytes(state.sourceSize)}`;
+    provenanceStatus.textContent = "LOCAL / PARSED";
+    provenanceStatus.dataset.status = "verified";
+    return;
+  }
+  provenanceLedger.hidden = true;
+}
+
+function setPreviewMode(mode: "grid" | "list"): void {
+  state.previewMode = mode;
+  viewGridButton.classList.toggle("active", mode === "grid");
+  viewListButton.classList.toggle("active", mode === "list");
+  viewGridButton.setAttribute("aria-selected", String(mode === "grid"));
+  viewListButton.setAttribute("aria-selected", String(mode === "list"));
+  renderPreview();
+}
+
+function closeCourseDetail(restoreFocus = false): void {
+  courseDetail.hidden = true;
+  if (restoreFocus && activeDetailTrigger?.isConnected) activeDetailTrigger.focus();
+}
+
+function showCourseDetail(block: PreviewBlock, trigger: HTMLElement): void {
+  activeDetailTrigger = trigger;
+  courseDetail.hidden = false;
+  courseDetail.dataset.kind = block.kind;
+  courseDetail.tabIndex = -1;
+  courseDetailKind.textContent = `${blockKindLabel(block.kind).toUpperCase()} / COURSE MEETING${block.conflict ? " / CONFLICT" : ""}`;
+  courseDetailTitle.textContent = block.title;
+  courseDetailTime.textContent = `${block.date} · ${weekdayZh(block.weekday)} · ${block.start}–${block.end} · 第 ${block.startPeriod}-${block.endPeriod} 节`;
+  courseDetailRoom.textContent = [block.location, block.campus].filter(Boolean).join(" · ") || "未提供";
+  courseDetailTeacher.textContent = block.teacher || "未提供";
+  courseDetailWeeks.textContent = `第 ${block.week} 周 · ${block.weekRule || "周次未提供"}`;
+  courseDetailSource.textContent = [block.sourceAdapterId, block.sourceTermId].filter(Boolean).join(" · ") || state.parsed?.formatLabel || "本地文件";
+  courseDetailNote.textContent = [block.note, block.conflict ? "此课程与同一时段的另一门课程冲突。" : ""].filter(Boolean).join(" ");
+  courseDetail.focus({ preventScroll: true });
+  courseDetail.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
+function renderWeekControls(blocks: PreviewBlock[]): void {
+  const blockWeeks = blocks.map((block) => block.week).filter((week) => week > 0);
+  const maxWeek = Math.max(1, config.teachingWeeks ?? 1, ...blockWeeks);
+  const current = currentTeachingWeek();
+  if (state.selectedWeek === null || state.selectedWeek < 1 || state.selectedWeek > maxWeek) {
+    state.selectedWeek = Math.min(maxWeek, current);
+  }
+  const previousFilter = weekFilter.value;
+  weekRuler.replaceChildren();
+  weekFilter.replaceChildren(new Option("全部", "all"));
+  for (let week = 1; week <= maxWeek; week += 1) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "week-notch";
+    button.textContent = String(week).padStart(2, "0");
+    button.title = `第 ${week} 周 · ${weekDateLabel(week)}`;
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-label", `第 ${week} 周，${weekDateLabel(week)}`);
+    button.setAttribute("aria-selected", String(week === state.selectedWeek));
+    button.classList.toggle("is-current", week === current);
+    button.addEventListener("click", () => {
+      state.selectedWeek = week;
+      weekFilter.value = String(week);
+      closeCourseDetail();
+      renderWeekControls(state.previewBlocks);
+      renderPreview();
+    });
+    weekRuler.append(button);
+    weekFilter.append(new Option(`第 ${week} 周`, String(week)));
+  }
+  weekFilter.value = previousFilter === "all" && state.previewMode === "list" ? "all" : String(state.selectedWeek);
+  currentWeekLabel.textContent = `第 ${state.selectedWeek} 周 · ${weekDateLabel(state.selectedWeek)}`;
+}
+
+function createCourseBlock(block: PreviewBlock): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `course-block kind-${block.kind}${block.conflict ? " is-conflict" : ""}`;
+  button.dataset.kind = block.kind;
+  if (block.eventIndex !== undefined) button.dataset.eventIndex = String(block.eventIndex);
+  button.setAttribute(
+    "aria-label",
+    `${block.title}，${weekdayZh(block.weekday)}，${block.start} 至 ${block.end}，${block.location || "地点未提供"}，${blockKindLabel(block.kind)}`,
+  );
+  const time = document.createElement("span");
+  time.className = "block-time";
+  time.textContent = `${block.start}–${block.end} · ${blockKindLabel(block.kind)}`;
+  const name = document.createElement("span");
+  name.className = "block-name";
+  name.textContent = block.title;
+  const meta = document.createElement("span");
+  meta.className = "block-meta";
+  meta.textContent = [block.location, block.teacher].filter(Boolean).join(" · ") || "信息未提供";
+  const code = document.createElement("span");
+  code.className = "block-code";
+  code.textContent = block.campus || block.weekRule || `第 ${block.week} 周`;
+  button.append(time, name, meta, code);
+  if (block.kind !== "normal") {
+    const flag = document.createElement("span");
+    flag.className = "block-flag";
+    flag.textContent = blockKindLabel(block.kind);
+    button.append(flag);
+  }
+  button.addEventListener("click", () => showCourseDetail(block, button));
+  return button;
+}
+
+function renderTimetable(blocks: PreviewBlock[]): boolean {
+  const selectedWeek = state.selectedWeek ?? currentTeachingWeek();
+  const query = courseFilter.value.trim().toLocaleLowerCase("zh-CN");
+  const filtered = blocks.filter((block) => {
+    if (block.week !== selectedWeek) return false;
+    if (!query) return true;
+    return [block.title, block.teacher, block.location].join(" ").toLocaleLowerCase("zh-CN").includes(query);
+  });
+  currentWeekLabel.textContent = `第 ${selectedWeek} 周 · ${weekDateLabel(selectedWeek)}`;
+  if (filtered.length === 0) {
+    previewEmpty.hidden = false;
+    previewEmpty.querySelector("p")!.textContent = query
+      ? "当前周没有匹配筛选条件的课程。"
+      : `第 ${selectedWeek} 周没有课程安排。`;
+    timetableShell.hidden = true;
+    return false;
+  }
+
+  const start = weekStart(selectedWeek);
+  const periods = periodsForDate(start);
+  timetableGrid.style.setProperty("--period-count", String(periods.length));
+  timetableGrid.replaceChildren();
+  const corner = document.createElement("div");
+  corner.className = "timetable-corner";
+  corner.textContent = "PERIOD";
+  timetableGrid.append(corner);
+
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  for (let weekday = 1; weekday <= 7; weekday += 1) {
+    const date = addDaysIso(start, weekday - 1);
+    const cell = document.createElement("div");
+    cell.className = `timetable-day-head${date === today ? " is-today" : ""}`;
+    cell.setAttribute("role", "columnheader");
+    const day = document.createElement("strong");
+    day.textContent = weekdayZh(weekday);
+    const dayDate = document.createElement("span");
+    dayDate.textContent = date.slice(5);
+    cell.append(day, dayDate);
+    timetableGrid.append(cell);
+  }
+
+  for (const period of periods) {
+    const label = document.createElement("div");
+    label.className = "timetable-period-label";
+    label.setAttribute("role", "rowheader");
+    const index = document.createElement("strong");
+    index.textContent = String(period.index).padStart(2, "0");
+    const time = document.createElement("span");
+    time.textContent = `${period.start}–${period.end}`;
+    label.append(index, time);
+    timetableGrid.append(label);
+    for (let weekday = 1; weekday <= 7; weekday += 1) {
+      const cell = document.createElement("div");
+      cell.className = `timetable-cell ${period.start < "12:00" ? "morning" : period.start < "18:00" ? "afternoon" : "evening"}`;
+      cell.setAttribute("role", "gridcell");
+      timetableGrid.append(cell);
+    }
+  }
+
+  for (const block of filtered) {
+    const startIndex = periods.findIndex((period) => period.index === block.startPeriod);
+    const endIndex = periods.findIndex((period) => period.index === block.endPeriod);
+    if (startIndex < 0 || endIndex < startIndex) continue;
+    const button = createCourseBlock(block);
+    button.style.gridColumn = String(block.weekday + 1);
+    button.style.gridRow = `${startIndex + 2} / ${endIndex + 3}`;
+    timetableGrid.append(button);
+  }
+  previewEmpty.hidden = true;
+  timetableShell.hidden = false;
+  previewListSection.hidden = true;
+  return true;
+}
+
+function renderPreviewList(blocks: PreviewBlock[]): void {
+  const query = courseFilter.value.trim().toLocaleLowerCase("zh-CN");
+  const allWeeks = weekFilter.value === "all";
+  const filtered = blocks.filter((block) => {
+    if (!allWeeks && block.week !== Number(weekFilter.value)) return false;
+    if (!query) return true;
+    return [block.title, block.teacher, block.location].join(" ").toLocaleLowerCase("zh-CN").includes(query);
+  });
+  eventTableBody.replaceChildren();
+  previewListSection.hidden = false;
+  previewTableWrap.hidden = filtered.length === 0;
+  previewEmpty.hidden = filtered.length > 0;
+  if (filtered.length === 0) {
+    previewEmpty.querySelector("p")!.textContent = "当前筛选条件下没有课程。";
+    return;
+  }
+  const limit = 300;
+  for (const block of filtered.slice(0, limit)) {
+    const row = document.createElement("tr");
+    if (block.eventIndex !== undefined) row.dataset.eventIndex = String(block.eventIndex);
+    row.dataset.kind = block.kind;
+    const values = [
+      block.date,
+      weekdayZh(block.weekday),
+      `${block.start}–${block.end}`,
+      block.title,
+      `${block.startPeriod}-${block.endPeriod}`,
+      block.teacher || "—",
+      block.location || "—",
+      blockKindLabel(block.kind),
+    ];
+    for (const [cellIndex, value] of values.entries()) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      if (cellIndex === 3) cell.className = "course-name";
+      if (cellIndex === 7) cell.className = `state-label kind-${block.kind}`;
+      row.append(cell);
+    }
+    eventTableBody.append(row);
+  }
+  const conflictIndexes = new Set(state.build?.conflicts.flatMap((conflict) => conflict.eventIndexes) ?? []);
+  setConflictEvents(conflictIndexes);
+  tableOverflowNote.hidden = filtered.length <= limit;
+  tableOverflowNote.textContent = filtered.length > limit ? `仅显示前 ${limit} 条；导出仍包含完整课表。` : "";
+}
+
+function renderPreview(): void {
+  const build = state.build;
+  if (!build || build.events.length === 0) return;
+  timetableShell.hidden = true;
+  previewListSection.hidden = true;
+  previewTableWrap.hidden = true;
+  if (state.previewMode === "grid") {
+    renderTimetable(state.previewBlocks);
+    return;
+  }
+  renderPreviewList(state.previewBlocks);
 }
 
 function renderPeriodGrid(): void {
@@ -323,12 +755,21 @@ function syncConfigFields(): void {
   renderPeriodGrid();
 }
 
-function clearCalendarOutputs(message = "解析文件后，这里会按实际日期展开每一周课程。"): void {
+function clearCalendarOutputs(message = "解析文件后，这里会按教学周展开课表。"): void {
   state.build = null;
+  state.previewBlocks = [];
+  state.selectedWeek = null;
   eventTableBody.replaceChildren();
   previewTableWrap.hidden = true;
+  previewListSection.hidden = true;
+  timetableShell.hidden = true;
+  timetableGrid.replaceChildren();
+  weekRuler.replaceChildren();
+  currentWeekLabel.textContent = "等待课表";
   previewEmpty.hidden = false;
   previewEmpty.querySelector("p")!.textContent = message;
+  provenanceLedger.hidden = true;
+  closeCourseDetail();
   conflictBox.hidden = true;
   conflictAck.checked = false;
   eventCount.textContent = "0";
@@ -405,66 +846,6 @@ function setConflictEvents(conflictIndexes: Set<number>): void {
   });
 }
 
-function renderWeekFilter(build: BuildResult): void {
-  const previous = weekFilter.value;
-  const weeks = [...new Set(build.events.map((event) => event.week))].sort((a, b) => a - b);
-  weekFilter.replaceChildren(new Option("全部", "all"));
-  for (const week of weeks) weekFilter.append(new Option(`第 ${week} 周`, String(week)));
-  if ([...weekFilter.options].some((option) => option.value === previous)) weekFilter.value = previous;
-}
-
-function renderPreview(): void {
-  const build = state.build;
-  if (!build || build.events.length === 0) return;
-
-  const selectedWeek = weekFilter.value;
-  const query = courseFilter.value.trim().toLocaleLowerCase("zh-CN");
-  const filtered = build.events.filter((event) => {
-    if (selectedWeek !== "all" && event.week !== Number(selectedWeek)) return false;
-    if (!query) return true;
-    return [event.title, event.teacher, event.location]
-      .join(" ")
-      .toLocaleLowerCase("zh-CN")
-      .includes(query);
-  });
-
-  eventTableBody.replaceChildren();
-  previewEmpty.hidden = filtered.length > 0;
-  previewTableWrap.hidden = filtered.length === 0;
-  if (filtered.length === 0) {
-    previewEmpty.querySelector("p")!.textContent = "当前筛选条件下没有课程。";
-    return;
-  }
-
-  const conflictIndexes = new Set(build.conflicts.flatMap((conflict) => conflict.eventIndexes));
-  const limit = 300;
-  for (const event of filtered.slice(0, limit)) {
-    const index = build.events.indexOf(event);
-    const row = document.createElement("tr");
-    row.dataset.eventIndex = String(index);
-    const values = [
-      event.date,
-      weekdayZh(event.weekday),
-      `${event.start}–${event.end}`,
-      event.title,
-      `${event.startPeriod}-${event.endPeriod}`,
-      event.teacher || "—",
-      event.location || "—",
-    ];
-    for (const [cellIndex, value] of values.entries()) {
-      const cell = document.createElement("td");
-      cell.textContent = value;
-      if (cellIndex === 3) cell.className = "course-name";
-      row.append(cell);
-    }
-    eventTableBody.append(row);
-  }
-  setConflictEvents(conflictIndexes);
-  tableOverflowNote.hidden = filtered.length <= limit;
-  tableOverflowNote.textContent =
-    filtered.length > limit ? `仅显示前 ${limit} 条；导出 ICS 将包含全部 ${filtered.length} 条筛选结果之外的完整课表。` : "";
-}
-
 function renderConflicts(build: BuildResult): void {
   conflictList.replaceChildren();
   if (build.conflicts.length === 0) {
@@ -533,7 +914,7 @@ async function ensureV2Timetable(): Promise<NormalizedTimetableV2> {
   state.v2 = await rawCoursesToV2(parsed, {
     sourceKind: "web",
     adapterId: `web-file-${parsed.format}`,
-    adapterVersion: "0.5.0",
+    adapterVersion: APP_VERSION,
     sourceUrl: window.location.href,
     title: config.title,
     semesterStart: config.semesterStart,
@@ -712,6 +1093,7 @@ async function rebuild(): Promise<void> {
   }
 
   const weeks = [...new Set(build.events.map((event) => event.week))];
+  state.previewBlocks = buildPreviewBlocks(build);
   eventCount.textContent = String(build.events.length);
   dateRange.textContent = `${build.events[0]?.date ?? "—"} → ${build.events.at(-1)?.date ?? "—"}`;
   conflictCount.textContent = String(build.conflicts.length);
@@ -719,7 +1101,8 @@ async function rebuild(): Promise<void> {
   exportEventCount.textContent = String(build.events.length);
   exportFirstDate.textContent = build.events[0]?.date ?? "—";
   exportLastDate.textContent = build.events.at(-1)?.date ?? "—";
-  renderWeekFilter(build);
+  renderProvenance();
+  renderWeekControls(state.previewBlocks);
   renderConflicts(build);
   renderPreview();
   setActiveStep("preview");
@@ -734,6 +1117,8 @@ async function processV2Timetable(name: string, size: number, timetable: Normali
   state.parsed = null;
   state.v2 = timetable;
   state.build = null;
+  state.previewBlocks = [];
+  state.selectedWeek = null;
   config.title = timetable.term.termName || config.title;
   config.semesterStart = timetable.term.semesterStart;
   config.teachingWeeks = timetable.term.teachingWeeks;
@@ -773,6 +1158,8 @@ async function processBytes(name: string, bytes: Uint8Array): Promise<void> {
   state.parsed = null;
   state.v2 = null;
   state.build = null;
+  state.previewBlocks = [];
+  state.selectedWeek = null;
   settingsPanel.classList.add("is-dormant");
   previewPanel.classList.add("is-dormant");
   clearCalendarOutputs();
@@ -914,9 +1301,9 @@ alarmMinutes.addEventListener("change", () => {
 });
 teachingWeeksInput.addEventListener("change", () => {
   const value = Number(teachingWeeksInput.value);
-  if (!Number.isInteger(value) || value < 1 || value > 30) {
+  if (!Number.isInteger(value) || value < 1) {
     teachingWeeksInput.value = String(config.teachingWeeks ?? 20);
-    showToast("教学周数必须为 1–30", "error");
+    showToast("教学周数必须是正整数", "error");
     return;
   }
   config.teachingWeeks = value;
@@ -930,8 +1317,18 @@ resetPeriods.addEventListener("click", () => {
   renderPeriodGrid();
   void rebuild();
 });
-weekFilter.addEventListener("change", renderPreview);
+weekFilter.addEventListener("change", () => {
+  if (weekFilter.value !== "all") state.selectedWeek = Number(weekFilter.value);
+  closeCourseDetail();
+  renderPreview();
+});
 courseFilter.addEventListener("input", renderPreview);
+viewGridButton.addEventListener("click", () => setPreviewMode("grid"));
+viewListButton.addEventListener("click", () => setPreviewMode("list"));
+courseDetailClose.addEventListener("click", () => closeCourseDetail(true));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !courseDetail.hidden) closeCourseDetail(true);
+});
 conflictAck.addEventListener("change", updateExportButton);
 googleConnect.addEventListener("click", () => void connectGoogle());
 googleCreateCalendar.addEventListener("click", () => void createGoogleCalendar());

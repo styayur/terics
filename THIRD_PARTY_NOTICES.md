@@ -83,6 +83,6 @@ SOFTWARE.
 - `lingion/sleepy` (GPL-3.0): WHUT jwapp endpoint/field/role-mapping research only; no source or assets copied.
 - `zaochih/zf-to-ics` (no repository license): Zhengfang field/protocol behavior research only; no code or assets copied.
 
-WHUT section mapping facts were cross-checked against public MIT and protocol-research sources. The test data in `fixtures/connectors/whut/` is fictional and created for terics.
+The operational WHUT request chain and field mapping were confirmed from the user-authorized live school page on 2026-11-06. The course, identity, teacher and room test data in `fixtures/connectors/whut/` is fictional and created for terics; only factual 13-period times are retained. No GPL or unlicensed code was copied.
 
 All trademarks belong to their respective owners.

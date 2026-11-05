@@ -4,6 +4,7 @@
 
 ```powershell
 npm ci
+npm run generate:whut-fixture
 npm run check
 npm test
 ```
@@ -35,7 +36,11 @@ The E2E suite exercises the built static app:
 - conflict acknowledgement;
 - URL-fragment handoff;
 - disabled OAuth state without a client ID;
-- custom period-time correction.
+- custom period-time correction;
+- teaching-week ruler and seven-day timetable grid;
+- course-detail keyboard open/close;
+- cancellation, reschedule and makeup presentation;
+- mobile body-width containment with local timetable scrolling.
 
 ## Extension build verification
 
@@ -48,7 +53,7 @@ npm run verify:extension
 
 The verifier checks MV3, the exact minimal permission set, required bundled files, absence of fixed host permissions/all_urls, no eval/new Function, and no remote script loading.
 
-A Windows release check additionally loaded `extension-dist/` unpacked in Microsoft Edge through Playwright. The service worker registered and the popup rendered with `activeTab, scripting, storage`.
+Run `npm run test:extension-install:edge` on Windows. It loads `extension-dist/` unpacked in Microsoft Edge through Playwright. The service worker registers, the popup renders with `activeTab, scripting, storage`, and a sanitized fixture is restored from extension storage to verify the teaching-week ruler and compact agenda.
 
 ```powershell
 npm run test:extension-install:edge
@@ -77,7 +82,7 @@ Tests include:
 - persistent browser-profile storage retention;
 - explicit profile deletion;
 - Google sync planner/deletion safeguards and OAuth configuration checks;
-- GUI construction smoke test.
+- GUI construction smoke test with teaching-week buttons and Canvas timetable preview.
 
 ## Cross-language consistency
 
@@ -85,7 +90,7 @@ Tests include:
 npm run test:consistency
 ```
 
-Current shared fixture set includes four legacy format fixtures and two v2 exchange fixtures. The script compares normalized courses, meetings, dates, times, conflicts and stable UIDs between TypeScript and Python.
+Current shared fixture set includes four legacy format fixtures and two v2 exchange fixtures, including the WHUT real-shape fixture. Result: **6 fixtures / 318 events**, comparing normalized courses, meetings, dates, times, conflicts and stable UIDs between TypeScript and Python.
 
 ## Dependency and license audits
 
@@ -95,12 +100,29 @@ npm run audit:licenses
 python scripts/audit_python_licenses.py
 ```
 
+## Current verified counts
+
+- Vitest: **48 tests / 14 files**.
+- Web Playwright E2E: **10 tests**.
+- Python pytest: **26 tests**.
+- Cross-language consistency: **6 fixtures / 318 events**.
+- Edge unpacked extension smoke: MV3 worker, popup, 18-week ruler and 4-item week agenda.
+- Python GUI smoke: creates the app, loads the sanitized WHUT fixture, renders week buttons, Canvas timetable blocks and occurrence rows.
+
 ## Real-environment testing status
 
-Not performed because no user-authorized school credentials or Google OAuth client/account were available:
+Passed on 2026-11-06 for an authorized WHUT 2026-2027-1 student session:
 
-- live WHUT student timetable extraction;
+- `currentUser.do`, `getSections.do` and `getMyScheduleDetail.do` read-only chain;
+- 42 arranged records, 15 courses, 42 meetings and 242 weekly instances;
+- 13/13 period-time matches;
+- 42/42 visible semester timetable cards matched on course, week set, weekday, section range, teacher and room;
+- 242-event ICS independently parsed with 242 unique UIDs.
+
+Still not performed:
+
 - live Zhengfang/Qiangzhi/Qingguo school verification;
-- actual Google Calendar create/update/delete sync.
+- non-empty WHUT unscheduled/practice collection acceptance;
+- real Google OAuth consent and Calendar create/update/delete sync.
 
-These are **not** claimed as passed. The release therefore uses the `v0.5.0-rc.1` prerelease channel rather than pretending to meet the stable-release minimum.
+Google Calendar is **not** claimed as passed. The release remains a prerelease because that account-level integration acceptance remains outstanding.

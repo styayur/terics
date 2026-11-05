@@ -1,5 +1,5 @@
 import { connectorManifests } from "../src/connectors/registry";
-import { mondayOfIso } from "../src/core/dates";
+import { addDaysIso, daysBetween, mondayOfIso, weekdayZh } from "../src/core/dates";
 import { generateIcsV2, suggestedIcsV2FileName } from "../src/v2/ics";
 import { encodeTericsFragment, serializeTericsJson } from "../src/v2/exchange";
 import { buildV2Events } from "../src/v2/events";
@@ -48,6 +48,11 @@ const meetingCount = byId<HTMLElement>("meeting-count");
 const eventCount = byId<HTMLElement>("event-count");
 const conflictCount = byId<HTMLElement>("conflict-count");
 const warningList = byId<HTMLDivElement>("warning-list");
+const provenanceLine = byId<HTMLElement>("provenance-line");
+const weekLabel = byId<HTMLElement>("week-label");
+const weekRuler = byId<HTMLDivElement>("week-ruler");
+const weekAgenda = byId<HTMLDivElement>("week-agenda");
+const weekEmpty = byId<HTMLElement>("week-empty");
 const ackRow = byId<HTMLElement>("ack-row");
 const conflictAck = byId<HTMLInputElement>("conflict-ack");
 const jsonButton = byId<HTMLButtonElement>("json-button");
@@ -57,8 +62,10 @@ const errorBox = byId<HTMLElement>("error-box");
 const clearButton = byId<HTMLButtonElement>("clear-button");
 let currentTab: chrome.tabs.Tab | null = null;
 let currentTimetable: NormalizedTimetableV2 | null = null;
+let currentBuild: Awaited<ReturnType<typeof buildV2Events>> | null = null;
 let currentEventCount = 0;
 let currentConflictCount = 0;
+let selectedWeek = 1;
 
 function defaultDate(): string {
   const now = new Date();
@@ -98,11 +105,117 @@ async function refreshDownloadState(): Promise<void> {
   webButton.disabled = !currentTimetable;
 }
 
+function weekDateLabel(week: number): string {
+  if (!currentTimetable) return `第 ${week} 周`;
+  const start = addDaysIso(currentTimetable.term.semesterStart, (week - 1) * 7);
+  const end = addDaysIso(start, 6);
+  return `${start.slice(5).replace("-", "/")}–${end.slice(5).replace("-", "/")}`;
+}
+
+function currentTeachingWeek(): number {
+  if (!currentTimetable) return 1;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const offset = daysBetween(currentTimetable.term.semesterStart, today);
+  return Math.min(currentTimetable.term.teachingWeeks, Math.max(1, Math.floor(offset / 7) + 1));
+}
+
+function eventKind(index: number): "normal" | "rescheduled" | "makeup" | "changed" {
+  const timetable = currentTimetable;
+  const event = currentBuild?.events[index];
+  if (!timetable || !event) return "normal";
+  const overrides = timetable.overrides.filter(
+    (override) => override.confirmed && override.courseId === event.courseId && override.meetingId === event.meetingId,
+  );
+  if (overrides.some((override) => override.type === "reschedule" && override.newDate === event.date)) return "rescheduled";
+  if (overrides.some((override) => override.type === "makeup" && override.newDate === event.date)) return "makeup";
+  if (
+    overrides.some(
+      (override) =>
+        (override.type === "room_change" || override.type === "teacher_change" || override.type === "period_change") &&
+        override.originalDate === event.date,
+    )
+  ) {
+    return "changed";
+  }
+  return "normal";
+}
+
+function kindLabel(kind: ReturnType<typeof eventKind>): string {
+  return { normal: "正常", rescheduled: "调课", makeup: "补课", changed: "变更" }[kind];
+}
+
+function renderWeekBoard(): void {
+  if (!currentTimetable || !currentBuild) return;
+  const maxWeek = Math.max(currentTimetable.term.teachingWeeks, ...currentBuild.events.map((event) => event.week), 1);
+  selectedWeek = Math.min(maxWeek, Math.max(1, selectedWeek));
+  weekLabel.textContent = `第 ${selectedWeek} 周 · ${weekDateLabel(selectedWeek)}`;
+  weekRuler.replaceChildren();
+  let selectedButton: HTMLButtonElement | null = null;
+  for (let week = 1; week <= maxWeek; week += 1) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "week-notch";
+    button.textContent = String(week).padStart(2, "0");
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(week === selectedWeek));
+    button.setAttribute("aria-label", `第 ${week} 周，${weekDateLabel(week)}`);
+    if (week === selectedWeek) selectedButton = button;
+    button.addEventListener("click", () => {
+      selectedWeek = week;
+      renderWeekBoard();
+    });
+    weekRuler.append(button);
+  }
+  if (selectedButton) {
+    requestAnimationFrame(() => {
+      const target = selectedButton;
+      if (!target) return;
+      weekRuler.scrollLeft = Math.max(0, target.offsetLeft - weekRuler.clientWidth / 2 + target.offsetWidth / 2);
+    });
+  }
+
+  const conflictIndexes = new Set(currentBuild.conflicts.flatMap((conflict) => conflict.eventIndexes));
+  const events = currentBuild.events
+    .map((event, index) => ({ event, index, kind: eventKind(index), conflict: conflictIndexes.has(index) }))
+    .filter((item) => item.event.week === selectedWeek)
+    .sort((left, right) => left.event.startDateTime.localeCompare(right.event.startDateTime));
+  weekAgenda.replaceChildren();
+  weekEmpty.hidden = events.length > 0;
+  for (const item of events) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `agenda-item kind-${item.kind}${item.conflict ? " is-conflict" : ""}`;
+    const time = document.createElement("span");
+    time.className = "agenda-time";
+    time.textContent = `${weekdayZh(item.event.weekday)} ${item.event.start}–${item.event.end}`;
+    const body = document.createElement("span");
+    body.className = "agenda-body";
+    const title = document.createElement("strong");
+    title.textContent = item.event.title;
+    const meta = document.createElement("small");
+    meta.textContent = [item.event.room, item.event.teacher, kindLabel(item.kind)].filter(Boolean).join(" · ");
+    body.append(title, meta);
+    const code = document.createElement("span");
+    code.className = "agenda-code";
+    code.textContent = `${item.event.startPeriod}-${item.event.endPeriod}`;
+    button.append(time, body, code);
+    button.setAttribute("aria-expanded", "false");
+    button.addEventListener("click", () => {
+      const expanded = button.classList.toggle("expanded");
+      button.setAttribute("aria-expanded", String(expanded));
+    });
+    weekAgenda.append(button);
+  }
+}
+
 async function renderTimetable(timetable: NormalizedTimetableV2, descriptorLabel?: string): Promise<void> {
   currentTimetable = timetable;
   currentTimetable.term.semesterStart = mondayOfIso(currentTimetable.term.semesterStart);
   currentTimetable.validation = inspectTimetableV2(currentTimetable).report;
   const build = await buildV2Events(currentTimetable);
+  currentBuild = build;
+  selectedWeek = currentTeachingWeek();
   currentEventCount = build.events.length;
   currentConflictCount = build.conflicts.length;
   resultPanel.hidden = false;
@@ -123,6 +236,14 @@ async function renderTimetable(timetable: NormalizedTimetableV2, descriptorLabel
     line.textContent = `• ${warning}`;
     warningList.append(line);
   }
+  warningList.hidden = warnings.length === 0;
+  provenanceLine.textContent = [
+    currentTimetable.source.schoolName || currentTimetable.source.adapterId,
+    currentTimetable.term.termId,
+    `第 1 周 ${currentTimetable.term.semesterStart}`,
+    `${currentTimetable.courses.length} 门 / ${currentTimetable.validation.completeness.meetingCount} 个上课实例`,
+  ].join(" · ");
+  renderWeekBoard();
   if (build.issues.some((issue) => issue.severity === "error")) {
     showError(build.issues.filter((issue) => issue.severity === "error").map((issue) => issue.message).join("\n"));
   } else {
@@ -150,7 +271,7 @@ function readSemester() {
     throw new Error("第 1 周周一日期无效");
   }
   const weeks = Number(teachingWeeks.value || 20);
-  if (!Number.isInteger(weeks) || weeks < 1 || weeks > 30) throw new Error("教学周数必须为 1–30");
+  if (!Number.isInteger(weeks) || weeks < 1) throw new Error("教学周数必须是正整数");
   const name = termName.value.trim() || `${academicYear.value.trim() || "当前"} 课表`;
   termName.value = name;
   return {
@@ -225,7 +346,10 @@ async function loadStored(): Promise<void> {
 async function clearLocalData(): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEY);
   currentTimetable = null;
+  currentBuild = null;
   resultPanel.hidden = true;
+  weekRuler.replaceChildren();
+  weekAgenda.replaceChildren();
   clearError();
   setStatus("idle", "本地数据已清除");
 }

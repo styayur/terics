@@ -240,6 +240,8 @@ export interface NormalizedTimetableV2 {
 
 export interface ExtractionDraft {
   descriptor: ConnectorDescriptor;
+  /** Adapter-derived term context is authoritative and is accompanied by an explicit warning on mismatch. */
+  termSource?: "adapter" | "user";
   term: Omit<TermContext, "periodSchedules"> & { periodSchedules?: PeriodSchedule[] };
   courses: CourseV2[];
   overrides: ScheduleOverride[];

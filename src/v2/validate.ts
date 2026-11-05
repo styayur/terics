@@ -66,8 +66,8 @@ export function inspectTimetableV2(value: unknown): ValidationResult {
     } catch {
       pushIssue(issues, "$.term.semesterStart", "invalid_date", "semesterStart 无效");
     }
-    if (!Number.isInteger(timetable.term.teachingWeeks) || timetable.term.teachingWeeks < 1 || timetable.term.teachingWeeks > 30) {
-      pushIssue(issues, "$.term.teachingWeeks", "invalid_weeks", "teachingWeeks 必须在 1–30");
+    if (!Number.isInteger(timetable.term.teachingWeeks) || timetable.term.teachingWeeks < 1) {
+      pushIssue(issues, "$.term.teachingWeeks", "invalid_weeks", "teachingWeeks 必须是正整数");
     }
     if (!Array.isArray(timetable.term.periodSchedules) || timetable.term.periodSchedules.length === 0) {
       pushIssue(issues, "$.term.periodSchedules", "missing_periods", "至少需要一套节次时间表");
@@ -141,9 +141,9 @@ export function inspectTimetableV2(value: unknown): ValidationResult {
         if (!Array.isArray(meeting.weeks) || meeting.weeks.length === 0) {
           missingPeriods += 1;
           pushIssue(issues, `${meetingPath}.weeks`, "missing_weeks", "上课实例没有周次");
-        } else if (meeting.weeks.some((week) => !Number.isInteger(week) || week < 1 || week > 30)) {
+        } else if (meeting.weeks.some((week) => !Number.isInteger(week) || week < 1)) {
           unknownWeekRules += 1;
-          pushIssue(issues, `${meetingPath}.weeks`, "invalid_weeks", "周次必须在 1–30");
+          pushIssue(issues, `${meetingPath}.weeks`, "invalid_weeks", "周次必须是正整数");
         }
         if (!meeting.teacher) missingTeacher += 1;
         if (!meeting.room) missingRoom += 1;

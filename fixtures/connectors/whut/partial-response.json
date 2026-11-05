@@ -1,0 +1,80 @@
+{
+  "msg": null,
+  "code": "0",
+  "datas": {
+    "arrangedList": [
+      {
+        "week": "000000001000000000000000000000",
+        "endTime": null,
+        "color": "#1677ff",
+        "courseName": "数据结构基础",
+        "courseCode": "SYN101",
+        "credit": "3",
+        "beginSection": 6,
+        "beginTime": null,
+        "endSection": 9,
+        "courseSerialNo": "SYN-SERIAL-01",
+        "teachClassName": "计算科学2501(30人)",
+        "teachingTarget": "测试专业2501-02",
+        "weeksAndTeachers": "测试教师甲",
+        "placeName": "示例校区-虚构教学楼-A002",
+        "teachClassId": "20261-T001",
+        "cellDetail": [
+          {
+            "color": null,
+            "text": "数据结构基础"
+          },
+          {
+            "color": null,
+            "text": "20261-T001(30人)"
+          },
+          {
+            "color": null,
+            "text": "测试教师甲"
+          },
+          {
+            "color": null,
+            "text": "[9周],第6-9节,示例校区-虚构教学楼-A002"
+          }
+        ],
+        "titleDetail": [
+          "数据结构基础",
+          "测试教师甲",
+          "20261-T001(30人)",
+          "[9周],第6-9节,示例校区-虚构教学楼-A002"
+        ],
+        "byCode": "test",
+        "tags": [],
+        "multiCourse": null,
+        "dayOfWeek": 5
+      }
+    ],
+    "notArrangeList": [
+      {
+        "courseName": "待排课程",
+        "courseCode": "SYN900",
+        "teachClassId": "20261-T900",
+        "week": "",
+        "dayOfWeek": null,
+        "beginSection": null,
+        "endSection": null
+      }
+    ],
+    "practiceList": [
+      {
+        "courseName": "实践课程",
+        "courseCode": "SYN901",
+        "teachClassId": "20261-T901",
+        "week": "000000001000000000000000000000",
+        "dayOfWeek": 2,
+        "beginSection": 3,
+        "endSection": 4,
+        "courseSerialNo": "SYN-SERIAL-901",
+        "placeName": "北院-实践楼-101",
+        "weeksAndTeachers": "测试教师丁",
+        "credit": "1",
+        "teachClassName": "实践班"
+      }
+    ]
+  }
+}

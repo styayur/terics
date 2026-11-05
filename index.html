@@ -27,12 +27,12 @@
           </svg>
         </span>
         <span class="wordmark-text">TERICS</span>
-        <span class="wordmark-version">v0.5.0-rc.1</span>
+        <span class="wordmark-version">v0.5.0-rc.2</span>
       </a>
       <div class="topbar-center">
         <span>UNIVERSITY TIMETABLE → ICALENDAR</span>
         <span class="rule"></span>
-        <span>BUILD 050</span>
+        <span>BUILD RC.2</span>
       </div>
       <div class="local-badge" title="文件只在当前浏览器标签页内处理">
         <span class="pulse"></span>
@@ -82,7 +82,8 @@
           <div class="matrix-row"><span>HTML 表格</span><span class="ok">VERIFIED</span></div>
           <div class="matrix-row"><span>XLSX</span><span class="ok">VERIFIED</span></div>
           <div class="matrix-row"><span>.TERICS.JSON</span><span class="ok">V2</span></div>
-          <div class="matrix-row"><span>SIS CONNECTORS</span><span class="ok">4 PROTOCOLS</span></div>
+          <div class="matrix-row"><span>WHUT JWAPP</span><span class="ok">VERIFIED</span></div>
+          <div class="matrix-row"><span>SIS CONNECTORS</span><span class="ok">5 PROTOCOLS</span></div>
           <div class="matrix-row muted"><span>旧版二进制 XLS</span><span>N/A</span></div>
         </div>
 
@@ -220,10 +221,11 @@
         </section>
 
         <section class="panel preview-panel" id="preview-panel" aria-labelledby="preview-title">
-          <div class="panel-heading compact">
+          <div class="panel-heading compact preview-heading">
             <div>
-              <div class="eyebrow">03 / INSPECT</div>
-              <h2 id="preview-title">预览课程</h2>
+              <div class="eyebrow">03 / TIMETABLE</div>
+              <h2 id="preview-title">教学周课表</h2>
+              <p class="heading-note preview-intro">课程块按真实节次落位；点击课程查看来源、教师、教室和调课状态。</p>
             </div>
             <div class="preview-actions">
               <label class="mini-field">
@@ -234,10 +236,29 @@
                 <span>筛选</span>
                 <input id="course-filter" type="search" placeholder="课程 / 教师 / 地点" />
               </label>
+              <div class="preview-view-switch" role="tablist" aria-label="预览视图">
+                <button type="button" class="view-tab active" id="view-grid" role="tab" aria-selected="true">课表</button>
+                <button type="button" class="view-tab" id="view-list" role="tab" aria-selected="false">清单</button>
+              </div>
             </div>
           </div>
 
-          <div class="preview-summary" id="preview-summary">
+          <div class="teaching-week-ruler">
+            <div class="week-ruler-heading">
+              <span class="block-label">TEACHING WEEKS</span>
+              <strong id="current-week-label">等待课表</strong>
+            </div>
+            <div class="week-ruler" id="week-ruler" role="tablist" aria-label="教学周选择"></div>
+          </div>
+
+          <div class="provenance-ledger" id="provenance-ledger" hidden aria-label="提取来源与验证">
+            <div><span>SOURCE</span><strong id="provenance-source">—</strong></div>
+            <div><span>TERM</span><strong id="provenance-term">—</strong></div>
+            <div><span>EXTRACTED</span><strong id="provenance-time">—</strong></div>
+            <div><span>VALIDATION</span><strong id="provenance-status">—</strong></div>
+          </div>
+
+          <div class="preview-summary" id="preview-summary" aria-label="课表摘要">
             <div><span>EVENTS</span><strong id="event-count">0</strong></div>
             <div><span>DATE RANGE</span><strong id="date-range">—</strong></div>
             <div><span>CONFLICTS</span><strong id="conflict-count">0</strong></div>
@@ -246,25 +267,59 @@
 
           <div class="empty-state" id="preview-empty">
             <span class="empty-index">00</span>
-            <p>解析文件后，这里会按实际日期展开每一周课程。</p>
+            <p>解析文件后，这里会按教学周展开课表。</p>
           </div>
 
-          <div class="table-wrap" id="preview-table-wrap" hidden>
-            <table class="event-table">
-              <thead>
-                <tr>
-                  <th>日期</th>
-                  <th>星期</th>
-                  <th>时间</th>
-                  <th>课程</th>
-                  <th>节次</th>
-                  <th>教师</th>
-                  <th>地点</th>
-                </tr>
-              </thead>
-              <tbody id="event-table-body"></tbody>
-            </table>
-            <div class="table-overflow-note" id="table-overflow-note" hidden></div>
+          <div class="timetable-shell" id="timetable-shell" hidden>
+            <div class="timetable-legend" aria-label="课程状态图例">
+              <span><i class="legend-mark normal"></i>正常</span>
+              <span><i class="legend-mark cancelled"></i>停课</span>
+              <span><i class="legend-mark rescheduled"></i>调课</span>
+              <span><i class="legend-mark makeup"></i>补课</span>
+              <span><i class="legend-mark conflict"></i>冲突</span>
+            </div>
+            <div class="timetable-scroll" id="timetable-scroll">
+              <div class="timetable-grid" id="timetable-grid" role="grid" aria-label="教学周课表"></div>
+            </div>
+          </div>
+
+          <article class="course-detail" id="course-detail" hidden aria-live="polite">
+            <button class="detail-close" id="course-detail-close" type="button" aria-label="关闭课程详情">×</button>
+            <div class="detail-kicker" id="course-detail-kind">COURSE MEETING</div>
+            <h3 id="course-detail-title">课程</h3>
+            <dl class="detail-ledger">
+              <div><dt>时间</dt><dd id="course-detail-time">—</dd></div>
+              <div><dt>地点</dt><dd id="course-detail-room">—</dd></div>
+              <div><dt>教师</dt><dd id="course-detail-teacher">—</dd></div>
+              <div><dt>教学周</dt><dd id="course-detail-weeks">—</dd></div>
+              <div><dt>来源</dt><dd id="course-detail-source">—</dd></div>
+            </dl>
+            <p class="detail-note" id="course-detail-note"></p>
+          </article>
+
+          <div class="preview-list-section" id="preview-list-section" hidden>
+            <div class="list-section-heading">
+              <span class="block-label">OCCURRENCE LIST</span>
+              <span>按实际日期展开；导出仍使用完整课表</span>
+            </div>
+            <div class="table-wrap" id="preview-table-wrap" hidden>
+              <table class="event-table">
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th>星期</th>
+                    <th>时间</th>
+                    <th>课程</th>
+                    <th>节次</th>
+                    <th>教师</th>
+                    <th>地点</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody id="event-table-body"></tbody>
+              </table>
+              <div class="table-overflow-note" id="table-overflow-note" hidden></div>
+            </div>
           </div>
 
           <div class="conflict-box" id="conflict-box" hidden>
@@ -353,7 +408,7 @@
           </div>
 
           <footer class="export-footer">
-            <span>TERICS 0.5.0-rc.1</span>
+            <span>TERICS 0.5.0-rc.2</span>
             <span>MIT LICENSE</span>
             <a href="https://github.com/styayur/terics" target="_blank" rel="noreferrer">SOURCE ↗</a>
           </footer>

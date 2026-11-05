@@ -58,10 +58,10 @@ v0.1.0 文件导入支持三类 Adapter；v0.5.0 在此基础上增加 SIS Conne
 ### 新增参考结论
 
 - 武汉理工大学入口在审计时返回 302 到 `zhlgd.whut.edu.cn` 统一认证。入口使用 `jwapp/sys/homeapp/index.do?forceCas=1`，不在未登录状态下探测个人课表接口。
-- WHUT 学生课表公开行为研究指向金智 `wdkbby` 微应用；本项目独立实现以下流程：currentUser/学期、节次映射、`cxxszhxqkb.do` 主通道、旧 `cxxskcb.do` 兜底。
-- `SKZC` 按 30 位周次 bitmap 解析；WHUT DM 映射采用公开研究的 1..5、8..12、14..16 → 物理 1..13 事实表，未知 DM 不丢弃。
+- 早期公开行为研究曾指向 `wdkbby` 与 `cxxszhxqkb.do`；最终真实页面确认当前主链路为 `currentUser.do`、`student/getSections.do`、`student/getMyScheduleDetail.do`。旧假设仅保留为研究背景。
+- 当前真实响应使用变长 `week` bitmap 与直接节次 code；解析器不再依赖固定 30 位或 WHUT DM 重映射。
 - 上述接口只在用户手动登录后由页面上下文执行，且全部为只读请求。
-- 未取得真实学生账号，因此 WHUT 仍为 Experimental；未伪造 Verified。
+- 2026-11-06 最终在用户授权的真实 WHUT 2026-2027-1 会话中完成页面请求核对与 42/42 课程块比对，因此将 WHUT 学校级适配器升级为 Verified；通用 Wisedu 仍为 Experimental。
 
 ### 官方技术文档
 
@@ -85,6 +85,14 @@ v0.1.0 文件导入支持三类 Adapter；v0.5.0 在此基础上增加 SIS Conne
 
 ### 真实环境阻塞
 
-- WHUT 及参考协议学校的真实登录验收需要用户现场完成统一认证。Agent 不收集密码、MFA 或 Cookie。
-- Google Calendar 真实同步需要用户授权的 OAuth Desktop/Web client 与独立测试日历。
-- 因此发布等级为 `v0.5.0-rc.1`，符合“最低发布门槛未满足时先发 RC”的约束。
+- WHUT 真实登录与课表对照已于 2026-11-06 由用户现场授权完成；Agent 未收集密码、MFA、Cookie 或真实课表到仓库。
+- 正方、强智、青果的参考协议学校仍缺少真实登录验收。
+- Google Calendar 真实同步仍需用户授权的 OAuth Desktop/Web client 与独立测试日历。
+- 由于 Google Calendar 账户级验收仍未完成，发布等级保持 `v0.5.0-rc.2`。
+
+
+## Live WHUT closeout (2026-11-06)
+
+The final WHUT implementation was derived from the current authenticated frontend request chain, not from the earlier `cxxszhxqkb.do`/`jcjcx.do` fallback assumptions. The observed current endpoints are `currentUser.do`, `student/getSections.do` and `student/getMyScheduleDetail.do`. The old public research remained useful only as background; the accepted behavior and field mapping now come from the live 2026-2027-1 response and a 42/42 visible timetable comparison.
+
+No GPL or unlicensed source code was copied during this closeout.

@@ -1,0 +1,333 @@
+{
+  "schemaVersion": "2.0",
+  "source": {
+    "kind": "extension",
+    "adapterId": "whut-wisedu-jwapp",
+    "adapterVersion": "0.5.1",
+    "schoolId": "whut",
+    "schoolName": "武汉理工大学",
+    "platform": "金智 Wisedu jwapp / WHUT",
+    "sourceUrl": "https://jwxt.whut.edu.cn/jwapp/sys/homeapp/home/index.html",
+    "extractedAt": "2026-11-06T04:00:00.000Z"
+  },
+  "term": {
+    "termId": "2026-2027-1",
+    "academicYear": "2026-2027",
+    "termCode": "1",
+    "termName": "2026-2027-1",
+    "semesterStart": "2026-09-07",
+    "teachingWeeks": 18,
+    "timezone": "Asia/Shanghai",
+    "periodSchedules": [
+      {
+        "id": "whut-periods-2026-2027-1-all",
+        "label": "WHUT getSections.do 实际作息",
+        "effectiveFrom": "2026-09-07",
+        "periods": [
+          {
+            "index": 1,
+            "start": "08:00",
+            "end": "08:45",
+            "label": "第一节"
+          },
+          {
+            "index": 2,
+            "start": "08:50",
+            "end": "09:35",
+            "label": "第二节"
+          },
+          {
+            "index": 3,
+            "start": "09:55",
+            "end": "10:40",
+            "label": "第三节"
+          },
+          {
+            "index": 4,
+            "start": "10:45",
+            "end": "11:30",
+            "label": "第四节"
+          },
+          {
+            "index": 5,
+            "start": "11:35",
+            "end": "12:20",
+            "label": "第五节"
+          },
+          {
+            "index": 6,
+            "start": "14:00",
+            "end": "14:45",
+            "label": "第六节"
+          },
+          {
+            "index": 7,
+            "start": "14:50",
+            "end": "15:35",
+            "label": "第七节"
+          },
+          {
+            "index": 8,
+            "start": "15:40",
+            "end": "16:25",
+            "label": "第八节"
+          },
+          {
+            "index": 9,
+            "start": "16:45",
+            "end": "17:30",
+            "label": "第九节"
+          },
+          {
+            "index": 10,
+            "start": "17:35",
+            "end": "18:20",
+            "label": "第十节"
+          },
+          {
+            "index": 11,
+            "start": "19:00",
+            "end": "19:45",
+            "label": "第十一节"
+          },
+          {
+            "index": 12,
+            "start": "19:50",
+            "end": "20:35",
+            "label": "第十二节"
+          },
+          {
+            "index": 13,
+            "start": "20:40",
+            "end": "21:25",
+            "label": "第十三节"
+          }
+        ]
+      }
+    ]
+  },
+  "courses": [
+    {
+      "id": "course-b669ff296ee4cdf3c51309cb",
+      "name": "数据结构基础",
+      "credits": 3,
+      "teachingClass": "计算科学2501(30人)",
+      "source": {
+        "adapterId": "whut-wisedu-jwapp",
+        "adapterVersion": "0.5.1",
+        "schoolId": "whut",
+        "sourceCourseId": "SYN101|20261-T001",
+        "sourceRef": "SYN-SERIAL-01"
+      },
+      "meetings": [
+        {
+          "id": "meeting-a02cf4877fd3462f16c84fae",
+          "teacher": "测试教师甲",
+          "room": "示例校区-虚构教学楼-A002",
+          "campus": "示例校区",
+          "weekday": 5,
+          "startPeriod": 6,
+          "endPeriod": 9,
+          "weeks": [
+            9
+          ],
+          "weekRule": "9",
+          "source": {
+            "adapterId": "whut-wisedu-jwapp",
+            "adapterVersion": "0.5.1",
+            "schoolId": "whut",
+            "sourceCourseId": "SYN101|20261-T001",
+            "sourceRef": "SYN-SERIAL-01"
+          }
+        }
+      ]
+    },
+    {
+      "id": "course-be3a7de6287cfb4b99127e71",
+      "name": "大学物理导论",
+      "credits": 4,
+      "teachingClass": "计算科学2501(30人)",
+      "source": {
+        "adapterId": "whut-wisedu-jwapp",
+        "adapterVersion": "0.5.1",
+        "schoolId": "whut",
+        "sourceCourseId": "SYN102|20261-T002",
+        "sourceRef": "SYN-SERIAL-02"
+      },
+      "meetings": [
+        {
+          "id": "meeting-cf2b4c8d42a87f7fbbfb8372",
+          "teacher": "测试教师乙",
+          "room": "示例校区-虚构教学楼-A012",
+          "campus": "示例校区",
+          "weekday": 3,
+          "startPeriod": 1,
+          "endPeriod": 2,
+          "weeks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18
+          ],
+          "weekRule": "1-18",
+          "source": {
+            "adapterId": "whut-wisedu-jwapp",
+            "adapterVersion": "0.5.1",
+            "schoolId": "whut",
+            "sourceCourseId": "SYN102|20261-T002",
+            "sourceRef": "SYN-SERIAL-02"
+          }
+        },
+        {
+          "id": "meeting-d9e069807634ee8906f59d3b",
+          "teacher": "测试教师乙",
+          "room": "示例校区-虚构教学楼-A002",
+          "campus": "示例校区",
+          "weekday": 5,
+          "startPeriod": 3,
+          "endPeriod": 5,
+          "weeks": [
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18
+          ],
+          "weekRule": "6-18",
+          "source": {
+            "adapterId": "whut-wisedu-jwapp",
+            "adapterVersion": "0.5.1",
+            "schoolId": "whut",
+            "sourceCourseId": "SYN102|20261-T002",
+            "sourceRef": "SYN-SERIAL-02"
+          }
+        }
+      ]
+    },
+    {
+      "id": "course-fe2efa3aa03a8175c08155b5",
+      "name": "地理信息实践",
+      "credits": 2,
+      "teachingClass": "地理信息2501(30人)",
+      "source": {
+        "adapterId": "whut-wisedu-jwapp",
+        "adapterVersion": "0.5.1",
+        "schoolId": "whut",
+        "sourceCourseId": "SYN203|20261-T003",
+        "sourceRef": "SYN-SERIAL-03"
+      },
+      "meetings": [
+        {
+          "id": "meeting-ab293971d1eea46e2e867f29",
+          "teacher": "测试教师丙",
+          "room": "示例校区-虚构教学楼-A003",
+          "campus": "示例校区",
+          "weekday": 6,
+          "startPeriod": 11,
+          "endPeriod": 13,
+          "weeks": [
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "weekRule": "8-12",
+          "source": {
+            "adapterId": "whut-wisedu-jwapp",
+            "adapterVersion": "0.5.1",
+            "schoolId": "whut",
+            "sourceCourseId": "SYN203|20261-T003",
+            "sourceRef": "SYN-SERIAL-03"
+          }
+        }
+      ]
+    }
+  ],
+  "overrides": [],
+  "metadata": {
+    "method": "api",
+    "sourceUrl": "https://jwxt.whut.edu.cn/jwapp/sys/homeapp/home/index.html",
+    "rawCount": 4,
+    "parsedCount": 4,
+    "skippedCount": 0,
+    "schoolId": "whut",
+    "schoolName": "武汉理工大学",
+    "platform": "金智 Wisedu jwapp / WHUT",
+    "userNote": "currentUser.do week=9; collections=4/0/0; 只读提取；未持久化 Cookie、CSRF 或学号",
+    "extractedAt": "2026-11-06T04:00:00.000Z",
+    "sourceKind": "extension",
+    "adapterId": "whut-wisedu-jwapp",
+    "adapterVersion": "0.5.1"
+  },
+  "warnings": [
+    "界面填写第 1 周周一为 2026-08-31，教务 currentUser.do 推导为 2026-09-07；已采用教务值。",
+    "getMyScheduleDetail.do: arrangedList=4, notArrangeList=0, practiceList=0"
+  ],
+  "validation": {
+    "status": "verified",
+    "checks": [
+      {
+        "id": "schema",
+        "status": "pass",
+        "message": "数据 Schema"
+      },
+      {
+        "id": "term",
+        "status": "pass",
+        "message": "学期上下文"
+      },
+      {
+        "id": "courses",
+        "status": "pass",
+        "message": "课程数量"
+      },
+      {
+        "id": "ids",
+        "status": "pass",
+        "message": "稳定 ID"
+      },
+      {
+        "id": "periods",
+        "status": "pass",
+        "message": "节次数据"
+      },
+      {
+        "id": "adjustments",
+        "status": "warn",
+        "message": "调课数据是否可获得"
+      }
+    ],
+    "completeness": {
+      "courseCount": 3,
+      "meetingCount": 4,
+      "missingTeacher": 0,
+      "missingRoom": 0,
+      "missingPeriods": 0,
+      "unknownWeekRules": 0,
+      "adjustmentDataAvailable": false
+    }
+  }
+}

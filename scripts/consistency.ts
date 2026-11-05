@@ -77,45 +77,51 @@ for (const fixture of fixtures) {
   });
 }
 
-const v2Timetable = parseTericsJson(readFileSync(resolve("fixtures/exchange/overrides.terics.json"), "utf8"));
-const v2Build = await buildV2Events(v2Timetable);
-snapshot.push({
-  fixture: "fixtures/exchange/overrides.terics.json",
-  format: "terics-v2",
-  courses: v2Timetable.courses
-    .map((course) => ({
-      id: course.id,
-      name: course.name,
-      meetings: course.meetings
-        .map((meeting) => ({
-          id: meeting.id,
-          teacher: meeting.teacher,
-          room: meeting.room,
-          weekday: meeting.weekday,
-          startPeriod: meeting.startPeriod,
-          endPeriod: meeting.endPeriod,
-          weeks: [...meeting.weeks],
-        }))
-        .sort((a, b) => a.id.localeCompare(b.id)),
-    }))
-    .sort((a, b) => a.id.localeCompare(b.id)),
-  events: v2Build.events
-    .map((event) => ({
-      uid: event.uid,
-      title: event.title,
-      teacher: event.teacher,
-      location: event.room,
-      weekday: event.weekday,
-      startPeriod: event.startPeriod,
-      endPeriod: event.endPeriod,
-      week: event.week,
-      date: event.date,
-      start: event.start,
-      end: event.end,
-    }))
-    .sort((a, b) => a.uid.localeCompare(b.uid)),
-  conflictCount: v2Build.conflicts.length,
-});
+const v2Fixtures = [
+  "fixtures/exchange/overrides.terics.json",
+  "fixtures/exchange/whut-real-shape.terics.json",
+];
+for (const fixture of v2Fixtures) {
+  const v2Timetable = parseTericsJson(readFileSync(resolve(fixture), "utf8"));
+  const v2Build = await buildV2Events(v2Timetable);
+  snapshot.push({
+    fixture,
+    format: "terics-v2",
+    courses: v2Timetable.courses
+      .map((course) => ({
+        id: course.id,
+        name: course.name,
+        meetings: course.meetings
+          .map((meeting) => ({
+            id: meeting.id,
+            teacher: meeting.teacher,
+            room: meeting.room,
+            weekday: meeting.weekday,
+            startPeriod: meeting.startPeriod,
+            endPeriod: meeting.endPeriod,
+            weeks: [...meeting.weeks],
+          }))
+          .sort((a, b) => a.id.localeCompare(b.id)),
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+    events: v2Build.events
+      .map((event) => ({
+        uid: event.uid,
+        title: event.title,
+        teacher: event.teacher,
+        location: event.room,
+        weekday: event.weekday,
+        startPeriod: event.startPeriod,
+        endPeriod: event.endPeriod,
+        week: event.week,
+        date: event.date,
+        start: event.start,
+        end: event.end,
+      }))
+      .sort((a, b) => a.uid.localeCompare(b.uid)),
+    conflictCount: v2Build.conflicts.length,
+  });
+}
 
 const pythonCandidates: string[] = [
   process.env.PYTHON,

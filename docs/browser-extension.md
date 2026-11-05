@@ -24,7 +24,7 @@ npm run verify:extension
 Artifact:
 
 ```text
-release/terics-extension-v0.5.0-rc.1.zip
+release/terics-extension-v0.5.0-rc.2.zip
 ```
 
 Unpacked development directory: `extension-dist/`.
@@ -52,14 +52,14 @@ Unpacked development directory: `extension-dist/`.
 3. Confirm the first teaching Monday, term name, and week count.
 4. Select auto detection or a preferred adapter.
 5. Click **检测并提取当前课表**.
-6. Review courses, meetings, conflicts and validation warnings.
+6. Review the teaching-week ruler, compact agenda, conflicts and validation warnings.
 7. Download `.terics.json`, download ICS, or open the Web app via a URL fragment.
 
 Opening the Web app through a fragment transfers data within the browser URL. Fragments are not sent to GitHub Pages in HTTP requests. Very large schedules should use the JSON download instead.
 
 ## Verification
 
-The v0.5.0-rc.1 package was loaded as an unpacked extension in Microsoft Edge with Playwright. The service worker registered, the popup loaded, and the effective permissions were:
+The v0.5.0-rc.2 package was loaded as an unpacked extension in Microsoft Edge with Playwright. The service worker registered, the popup loaded, a sanitized stored timetable rendered the teaching-week ruler and agenda, and the effective permissions were:
 
 ```text
 activeTab, scripting, storage
@@ -78,6 +78,6 @@ The package verifier checks that the ZIP contains `manifest.json`, popup, conten
 ## Limitations
 
 - Chrome Web Store publication is not part of this release.
-- Extraction is only as complete as the active school variant.
-- Student account acceptance remains outstanding.
+- Extraction is only as complete as the active school variant. WHUT is the only live-verified school adapter in this release.
+- Future WHUT API changes require revalidation; other Wisedu schools remain Experimental.
 - The extension cannot bypass login, MFA or CAPTCHA.

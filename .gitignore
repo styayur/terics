@@ -21,3 +21,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Raw authenticated acceptance captures (local only)
+docs/jounal/
+docs/journal/

@@ -2,6 +2,7 @@ import type { ConnectorContext, DetectionResult, SemesterSelection, SISAdapter }
 import type { SchoolProfile } from "./sdk/schools";
 import { finalizeConnectorExtraction } from "./sdk/normalize";
 import { WHUT_PROFILE } from "./schools/whut";
+import { createWhutAdapter } from "./schools/whut-adapter";
 import { createWiseduAdapter } from "./vendors/wisedu";
 import { createZfAdapter } from "./vendors/zf";
 import { createQiangzhiAdapter } from "./vendors/qiangzhi";
@@ -25,7 +26,7 @@ export class NoConnectorDetectedError extends Error {
 
 export function createConnectorRegistry(): SISAdapter[] {
   return [
-    createWiseduAdapter(WHUT_PROFILE),
+    createWhutAdapter(),
     createZfAdapter(),
     createQiangzhiAdapter(),
     createQingguoAdapter(),

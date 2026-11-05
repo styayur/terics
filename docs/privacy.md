@@ -42,3 +42,8 @@
 - Static GitHub Pages hosting for the public app; timetable files are not sent to it.
 
 See [data-flow.md](data-flow.md) and [threat-model.md](threat-model.md).
+
+
+## Live acceptance captures
+
+During the WHUT 2026-11-06 acceptance, raw authenticated API responses were used only from the user-controlled browser session and were kept in an ignored local journal. They were never committed, uploaded, attached to CI, or included in release assets. Repository fixtures use synthetic course names, IDs, teachers and rooms; only the factual 13-period times are retained from the school API.

@@ -41,6 +41,7 @@ SIGNAL = "#B9F34A"
 DANGER = "#C92814"
 SUCCESS = "#2F7D32"
 WARNING = "#B86C00"
+ROOM_BLUE = "#556B73"
 MONO = ("Cascadia Mono", 9)
 MONO_SMALL = ("Cascadia Mono", 8)
 SANS = ("Segoe UI", 10)
@@ -65,6 +66,8 @@ class TericsApp:
         self.browser_worker: ConnectorBrowserWorker | None = None
         self.school_profiles: dict[str, SchoolProfile] = {}
         self.google_last_result = "未同步"
+        self.selected_week = 1
+        self.week_button_map: dict[int, tk.Button] = {}
 
         self.vars = {
             "title": tk.StringVar(value=self.config.title),
@@ -428,8 +431,8 @@ class TericsApp:
                 ).grid(row=0, column=clock_column, sticky="ew", padx=3, pady=4)
             tk.Label(cell, text="–", bg=PANEL, fg=MUTED, font=("Cascadia Mono", 8)).grid(row=0, column=2)
     def _build_preview(self, card: tk.Frame) -> None:
-        self._eyebrow(card, "03 / INSPECT", 0)
-        tk.Label(card, text="预览课程", bg=PANEL, fg=INK, font=("Georgia", 20), anchor="w").grid(
+        self._eyebrow(card, "03 / TIMETABLE", 0)
+        tk.Label(card, text="教学周课表", bg=PANEL, fg=INK, font=("Georgia", 20), anchor="w").grid(
             row=1, column=0, sticky="w", padx=18, pady=(1, 10)
         )
         metrics = tk.Frame(card, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
@@ -443,12 +446,46 @@ class TericsApp:
             value.pack(fill="x")
             setattr(self, f"{key}_label", value)
 
+        week_wrap = tk.Frame(card, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
+        week_wrap.grid(row=3, column=0, sticky="ew", padx=18, pady=(0, 8))
+        week_head = tk.Frame(week_wrap, bg=PAPER_2)
+        week_head.pack(fill="x")
+        tk.Label(
+            week_head, text="TEACHING WEEKS", bg=PAPER_2, fg=MUTED,
+            font=("Cascadia Mono", 7), anchor="w",
+        ).pack(side="left", padx=8, pady=5)
+        self.week_label = tk.Label(
+            week_head, text="等待课表", bg=PAPER_2, fg=INK_SOFT,
+            font=("Segoe UI", 9), anchor="e",
+        )
+        self.week_label.pack(side="right", padx=8, pady=5)
+        self.week_buttons_frame = tk.Frame(week_wrap, bg=PANEL)
+        self.week_buttons_frame.pack(fill="x")
+
+        board = tk.Frame(card, bg="#FFFDF6", highlightbackground=LINE, highlightthickness=1)
+        board.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 7))
+        board.grid_columnconfigure(0, weight=1)
+        self.timetable_canvas = tk.Canvas(
+            board, bg="#FFFDF6", height=190, highlightthickness=0,
+            xscrollincrement=24,
+        )
+        canvas_scroll = ttk.Scrollbar(board, orient="horizontal", command=self.timetable_canvas.xview)
+        self.timetable_canvas.configure(xscrollcommand=canvas_scroll.set)
+        self.timetable_canvas.grid(row=0, column=0, sticky="ew")
+        canvas_scroll.grid(row=1, column=0, sticky="ew")
+        self.timetable_canvas.bind("<Configure>", lambda _event: self._render_timetable_canvas(self.build))
+        self.course_detail_label = tk.Label(
+            card, text="点击课表块查看课程时间、教师与地点。", bg=PANEL, fg=MUTED,
+            font=SANS_SMALL, anchor="w", justify="left",
+        )
+        self.course_detail_label.grid(row=5, column=0, sticky="ew", padx=18, pady=(0, 8))
+
         tree_frame = tk.Frame(card, bg=PANEL)
-        tree_frame.grid(row=3, column=0, sticky="nsew", padx=18, pady=(0, 8))
+        tree_frame.grid(row=6, column=0, sticky="nsew", padx=18, pady=(0, 8))
         tree_frame.grid_rowconfigure(0, weight=1)
         tree_frame.grid_columnconfigure(0, weight=1)
         columns = ("date", "weekday", "time", "course", "section", "teacher", "location")
-        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=8)
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=6)
         headings = ["日期", "星期", "时间", "课程", "节次", "教师", "地点"]
         widths = [92, 48, 90, 170, 58, 80, 125]
         for column, heading, width in zip(columns, headings, widths, strict=True):
@@ -461,7 +498,7 @@ class TericsApp:
         self.tree.tag_configure("conflict", background="#FFF0EB")
 
         conflict_row = tk.Frame(card, bg=PANEL)
-        conflict_row.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 10))
+        conflict_row.grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 10))
         self.conflict_label = tk.Label(conflict_row, text="", bg=PANEL, fg=DANGER, font=MONO_SMALL, anchor="w")
         self.conflict_check = tk.Checkbutton(
             conflict_row, text="我已检查冲突，仍要导出", variable=self.conflict_ack,
@@ -469,11 +506,104 @@ class TericsApp:
             activebackground=PANEL, selectcolor="#FFF0EB", font=SANS_SMALL,
         )
         self.empty_preview = tk.Label(
-            card, text="选择文件后，这里会按实际日期展开每一周课程。", bg=PANEL,
+            card, text="选择文件后，这里会按教学周展开课表。", bg=PANEL,
             fg=MUTED, font=SANS_SMALL, padx=20, pady=25,
         )
-        self.empty_preview.grid(row=5, column=0, sticky="ew", padx=18)
+        self.empty_preview.grid(row=8, column=0, sticky="ew", padx=18)
         self._set_conflict_controls(False, [])
+
+    def _week_range(self, week: int) -> str:
+        start_day = date.fromisoformat(self.config.semester_start) + timedelta(days=(week - 1) * 7)
+        end_day = start_day + timedelta(days=6)
+        return f"{start_day:%m/%d}–{end_day:%m/%d}"
+
+    def _set_week(self, week: int) -> None:
+        self.selected_week = week
+        for number, button in self.week_button_map.items():
+            button.configure(bg=ACCENT if number == week else PANEL, fg=PAPER if number == week else MUTED)
+        if self.build is not None:
+            self.week_label.configure(text=f"第 {week} 周 · {self._week_range(week)}")
+            self._render_timetable_canvas(self.build)
+
+    def _render_week_ruler(self, build: BuildResult) -> None:
+        for child in self.week_buttons_frame.winfo_children():
+            child.destroy()
+        self.week_button_map = {}
+        configured_weeks = int(self.vars["teaching_weeks"].get() or 20)
+        max_week = max([configured_weeks, *[event.week for event in build.events], 1])
+        today = date.today()
+        semester_start = date.fromisoformat(self.config.semester_start)
+        current_week = min(max_week, max(1, (today - semester_start).days // 7 + 1)) if today >= semester_start else 1
+        self.selected_week = min(max_week, max(1, self.selected_week or current_week))
+        for week in range(1, max_week + 1):
+            button = tk.Button(
+                self.week_buttons_frame, text=f"{week:02d}", command=lambda value=week: self._set_week(value),
+                width=3, height=1, bd=0, relief="flat", bg=PANEL, fg=MUTED,
+                activebackground=ACCENT, activeforeground=PAPER, font=("Cascadia Mono", 8),
+                cursor="hand2", padx=4, pady=5,
+            )
+            button.pack(side="left", padx=(0, 1), pady=1)
+            self.week_button_map[week] = button
+        self._set_week(self.selected_week)
+
+    def _render_timetable_canvas(self, build: BuildResult | None) -> None:
+        canvas = self.timetable_canvas
+        canvas.delete("all")
+        if build is None or not build.events:
+            return
+        week = self.selected_week
+        events = [event for event in build.events if event.week == week]
+        periods = self.config.periods or DEFAULT_PERIODS
+        row_height = 34
+        header_height = 28
+        gutter = 62
+        day_width = 116
+        width = max(canvas.winfo_width(), gutter + day_width * 7)
+        height = header_height + row_height * len(periods) + 2
+        canvas.configure(scrollregion=(0, 0, width, height))
+        canvas.create_rectangle(0, 0, gutter, height, fill=PAPER_2, outline=LINE)
+        canvas.create_text(gutter / 2, header_height / 2, text="节次", fill=MUTED, font=("Cascadia Mono", 7))
+        days = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        for weekday, label in enumerate(days, start=1):
+            x0 = gutter + (weekday - 1) * day_width
+            canvas.create_rectangle(x0, 0, x0 + day_width, header_height, fill=PAPER_2, outline=LINE)
+            canvas.create_text(x0 + day_width / 2, header_height / 2, text=label, fill=INK_SOFT, font=("Segoe UI", 9, "bold"))
+        for row, period in enumerate(periods):
+            y0 = header_height + row * row_height
+            fill = "#FFFDF6" if row % 2 == 0 else "#F8F5EA"
+            canvas.create_rectangle(0, y0, gutter, y0 + row_height, fill=PAPER_2, outline=LINE)
+            canvas.create_text(8, y0 + 8, anchor="nw", text=f"{period.index:02d}", fill=INK, font=("Cascadia Mono", 8, "bold"))
+            canvas.create_text(26, y0 + 8, anchor="nw", text=f"{period.start}–{period.end}", fill=MUTED, font=("Cascadia Mono", 6))
+            for weekday in range(1, 8):
+                x0 = gutter + (weekday - 1) * day_width
+                canvas.create_rectangle(x0, y0, x0 + day_width, y0 + row_height, fill=fill, outline="#E2DED2")
+        period_indexes = {period.index: row for row, period in enumerate(periods)}
+        conflict_indexes = {index for conflict in build.conflicts for index in conflict.event_indexes}
+        for index, event in enumerate(build.events):
+            if event.week != week:
+                continue
+            start_row = period_indexes.get(event.start_period)
+            end_row = period_indexes.get(event.end_period)
+            if start_row is None or end_row is None or end_row < start_row:
+                continue
+            x0 = gutter + (event.weekday - 1) * day_width + 3
+            y0 = header_height + start_row * row_height + 3
+            x1 = x0 + day_width - 6
+            y1 = header_height + (end_row + 1) * row_height - 3
+            fill = "#FFF0E7" if index not in conflict_indexes else "#FFE0D8"
+            outline = DANGER if index in conflict_indexes else ACCENT
+            rect = canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline=outline, width=2 if index in conflict_indexes else 1)
+            canvas.create_text(x0 + 5, y0 + 4, anchor="nw", width=max(40, int(x1 - x0 - 10)), text=event.title, fill=INK, font=("Segoe UI", 8, "bold"))
+            canvas.create_text(x0 + 5, y1 - 4, anchor="sw", width=max(40, int(x1 - x0 - 10)), text=f"{event.start}–{event.end} · {event.location or '地点未提供'}", fill=ROOM_BLUE, font=("Cascadia Mono", 6))
+            canvas.tag_bind(rect, "<Button-1>", lambda _click, item=event: self._show_course_detail(item))
+        if not events:
+            canvas.create_text(width / 2, height / 2, text=f"第 {week} 周没有课程安排", fill=MUTED, font=SANS_SMALL)
+
+    def _show_course_detail(self, event: CalendarEvent) -> None:
+        self.course_detail_label.configure(
+            text=f"{event.title}  ·  {event.date} {event.start}–{event.end}  ·  {event.teacher or '教师未提供'}  ·  {event.location or '地点未提供'}",
+            fg=INK_SOFT,
+        )
 
     def _build_export(self, parent: tk.Frame) -> None:
         panel = tk.Frame(parent, bg=INK, width=300, highlightbackground="#363B33", highlightthickness=1)
@@ -968,6 +1098,8 @@ class TericsApp:
     def _render_preview(self, build: BuildResult) -> None:
         self.tree.delete(*self.tree.get_children())
         self.empty_preview.grid_remove()
+        self._render_week_ruler(build)
+        self._render_timetable_canvas(build)
         conflict_indexes = {index for conflict in build.conflicts for index in conflict.event_indexes}
         weekdays = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"]
         for index, event in enumerate(build.events[:1500]):

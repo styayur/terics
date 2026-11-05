@@ -11,10 +11,10 @@
 
 - **Web**：<https://styayur.github.io/terics/>
 - **Repository**：<https://github.com/styayur/terics>
-- **v0.5.0-rc.1 Release**：<https://github.com/styayur/terics/releases/tag/v0.5.0-rc.1>
-- **v0.1.0 历史版本保持不变**
+- **v0.5.0-rc.2 Release**：<https://github.com/styayur/terics/releases/tag/v0.5.0-rc.2>
+- **v0.1.0 / v0.5.0-rc.1 历史版本保持不变**
 
-> v0.5.0-rc.1 已实现 SIS Connector、MV3 扩展、Python Playwright 提取和 Google Calendar 同步代码路径，但真实学生账号与真实 Google OAuth 验收尚未完成。因此本版本使用 RC 标签，不冒充稳定版。
+> v0.5.0-rc.2 完成了武汉理工大学 2026-2027-1 真实学生课表的端到端验收：42 条教务记录归一化为 15 门课程、42 个上课实例和 242 个周事件，并与教务页面逐项比对无差异。Google Calendar 真实账号同步仍未在本环境验收，因此版本继续保持 RC，不冒充稳定版。
 
 ## 三种入口
 
@@ -25,7 +25,9 @@
 - HTML / CSV / TSV / XLSX 文件导入
 - `.terics.json` schema 2.0 导入
 - 扩展 URL fragment 交接
-- 课程/调课预览、冲突确认
+- 教学周标尺与七日节次网格
+- 正常、停课、调课、补课、冲突状态
+- 课程详情、来源与验证台账
 - RFC 5545 ICS
 - 可选 Google Calendar 增量同步 UI（仅在配置 `VITE_GOOGLE_CLIENT_ID` 时启用）
 
@@ -38,6 +40,7 @@ Manifest V3，最小权限：`activeTab`、`scripting`、`storage`。
 - 用户点击扩展后，在已登录教务页执行只读 Connector
 - 不使用 `<all_urls>` 或固定 host permissions
 - 不读取浏览器 Cookie 数据库
+- 教学周标尺与紧凑课程 agenda
 - 预览并导出 `.terics.json` / ICS
 - 通过 URL fragment 打开 Web preview
 
@@ -51,6 +54,7 @@ Manifest V3，最小权限：`activeTab`、`scripting`、`storage`。
 - 原有文件导入完整保留
 - `.terics.json` 导入
 - 手动登录后只读提取
+- 教学周按钮与 Canvas 课表预览
 - ICS 导出
 - Google Desktop OAuth + 系统 keyring 存储
 
@@ -72,7 +76,7 @@ python main.pyw
 
 | Adapter | 平台 | 方法 | 状态 |
 |---|---|---|---|
-| `whut-wisedu-jwapp` | 武汉理工大学 · 金智 jwapp / wdkbby | 只读 API | Experimental |
+| `whut-wisedu-jwapp` | 武汉理工大学 · 金智 jwapp | 只读 API | **Verified** · 2026-11-06 |
 | `zf-jwglxt` | 正方 V8/V9 兼容 | API + DOM | Experimental |
 | `qiangzhi-dom` | 强智 | DOM | Experimental |
 | `qingguo-dom` | 青果 | DOM / export | Experimental |
@@ -81,7 +85,7 @@ python main.pyw
 
 支持等级定义和每个学校的证据见 [docs/support-matrix.md](docs/support-matrix.md)。
 
-**没有学校被标记为 Verified。** 真实 WHUT 学生账号登录、实时课表对照及 Google Calendar 实际写入需要用户手动授权环境，本次未完成。
+**武汉理工大学已标记为 Verified。** 验收范围是 `2026-2027-1` 学生上下文：真实 `currentUser.do` / `getSections.do` / `getMyScheduleDetail.do` 结果已与页面 42 个课程块逐字段比对，13 节作息与学期日期完全一致。该结论不外推到通用 Wisedu、其他学校或其他学期。Google Calendar 真实写入仍未验证。
 
 ## schema 2.0
 
@@ -132,6 +136,7 @@ npm ci
 npm run check
 npm test
 npm run build:connectors
+npm run generate:whut-fixture
 npm run build:extension
 npm run package:extension
 npm run verify:extension
@@ -139,6 +144,7 @@ npm run audit:licenses
 npm run build
 npx playwright install chromium
 npm run test:e2e
+npm run test:extension-install:edge
 
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -165,6 +171,7 @@ npm run test:consistency
 - [Python Desktop](docs/desktop.md)
 - [Google Calendar](docs/google-calendar.md)
 - [架构](docs/architecture.md)
+- [界面设计系统](.interface-design/system.md)
 - [数据流](docs/data-flow.md)
 - [隐私](docs/privacy.md)
 - [威胁模型](docs/threat-model.md)
@@ -177,7 +184,7 @@ npm run test:consistency
 
 **terics** is a local-first bridge from Chinese university timetable sources to standard ICS and optional Google Calendar sync. It provides a static TypeScript/Vite web app, a Manifest V3 Chrome/Edge extension, and a Python 3.12+ Tkinter desktop app with a dedicated Playwright login profile.
 
-The v0.5.0-rc.1 release ships experimental Wisedu/WHUT, Zhengfang, Qiangzhi and Qingguo connectors, stable schema 2.0, schedule overrides, effective-dated period tables, MV3 extraction, ICS export and a guarded Google Calendar sync planner. No real school account or Google OAuth account was available for final acceptance, so this release is explicitly a release candidate.
+The v0.5.0-rc.2 release includes a live-verified WHUT jwapp connector plus experimental Zhengfang, Qiangzhi, Qingguo and generic Wisedu/DOM adapters. It adds a timetable-first teaching-week interface and keeps schema 2.0, schedule overrides, effective-dated period tables, deterministic ICS and guarded Google Calendar sync planning. Google Calendar account-level acceptance remains outstanding, so the release stays a candidate.
 
 ## License
 

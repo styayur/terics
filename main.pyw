@@ -12,6 +12,7 @@ def main() -> int:
         from tkinter import messagebox
 
         from terics.gui import TericsApp
+        from terics.timetable_v2 import parse_terics_json
     except ModuleNotFoundError as exc:
         try:
             import tkinter as tk
@@ -33,7 +34,14 @@ def main() -> int:
     if "--smoke-test" in sys.argv:
         root = tk.Tk()
         root.withdraw()
-        TericsApp(root)
+        app = TericsApp(root)
+        fixture = root_dir / "fixtures" / "exchange" / "whut-real-shape.terics.json"
+        if fixture.exists():
+            timetable = parse_terics_json(fixture.read_text(encoding="utf-8"))
+            app._load_v2_timetable(timetable, "whut-real-shape.terics.json")
+            root.update_idletasks()
+            if not app.week_button_map or not app.timetable_canvas.find_all() or not app.tree.get_children():
+                raise RuntimeError("GUI timetable preview did not render")
         root.update_idletasks()
         root.destroy()
         print("terics GUI smoke test passed")

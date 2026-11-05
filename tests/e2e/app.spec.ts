@@ -91,6 +91,50 @@ test("applies a custom period time to the generated event preview", async ({ pag
   await expect(page.locator("#parsed-course-count")).toHaveText("6", { timeout: 15_000 });
   await page.getByLabel("第 1 节开始时间").fill("08:15");
   await page.getByLabel("第 1 节开始时间").dispatchEvent("change");
+  await page.locator("#view-list").click();
   await expect(page.locator("#event-table-body tr").first()).toContainText("08:15");
   await expect(page.locator("#export-button")).toBeEnabled();
+});
+
+test("renders the teaching-week ruler, timetable grid and course detail", async ({ page }) => {
+  await expect(page.locator("#preview-empty")).toBeVisible();
+  await expect(page.locator("#timetable-shell")).toBeHidden();
+  await page.getByRole("button", { name: /CSV \/ 结构化清单/ }).click();
+  await expect(page.locator("#timetable-shell")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("#week-ruler .week-notch")).toHaveCount(20);
+  await expect(page.locator(".course-block")).not.toHaveCount(0);
+  await page.locator(".course-block").first().focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#course-detail")).toBeVisible();
+  await expect(page.locator("#course-detail-title")).not.toBeEmpty();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#course-detail")).toBeHidden();
+  await page.locator("#week-ruler .week-notch").nth(1).click();
+  await expect(page.locator("#current-week-label")).toContainText("第 2 周");
+  await expect(page.locator("#week-filter")).toHaveValue("2");
+});
+
+test("renders cancellation, reschedule and makeup states from v2 overrides", async ({ page }) => {
+  await page.locator("#file-input").setInputFiles("fixtures/exchange/overrides.terics.json");
+  await expect(page.locator("#timetable-shell")).toBeVisible({ timeout: 15_000 });
+  await page.locator("#week-ruler .week-notch").nth(1).click();
+  await expect(page.locator('.course-block[data-kind="cancelled"]')).toHaveCount(1);
+  await page.locator("#week-ruler .week-notch").nth(2).click();
+  await expect(page.locator('.course-block[data-kind="rescheduled"]')).toHaveCount(1);
+  await page.locator("#week-ruler .week-notch").nth(3).click();
+  await expect(page.locator('.course-block[data-kind="makeup"]')).toHaveCount(1);
+});
+
+test("keeps the body within the mobile viewport while the timetable scrolls locally", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: /CSV \/ 结构化清单/ }).click();
+  await expect(page.locator("#timetable-shell")).toBeVisible({ timeout: 15_000 });
+  const widths = await page.evaluate(() => ({
+    body: document.documentElement.scrollWidth,
+    viewport: document.documentElement.clientWidth,
+    timetable: document.querySelector<HTMLElement>("#timetable-scroll")?.scrollWidth ?? 0,
+    timetableClient: document.querySelector<HTMLElement>("#timetable-scroll")?.clientWidth ?? 0,
+  }));
+  expect(widths.body).toBeLessThanOrEqual(widths.viewport);
+  expect(widths.timetable).toBeGreaterThan(widths.timetableClient);
 });
