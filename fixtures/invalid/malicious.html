@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>恶意输入安全测试</title></head>
+<body>
+<table>
+  <tr><td>节次</td><td>周一</td><td>周二</td></tr>
+  <tr>
+    <td>1-2节</td>
+    <td><img src="x" onerror="window.__tericsXss = 1">安全课<br>{第1-2周<br>测试老师<br>A101</td>
+    <td></td>
+  </tr>
+</table>
+<script>window.__tericsXss = 2</script>
+</body>
+</html>

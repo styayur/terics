@@ -1,0 +1,47 @@
+{
+  "name": "terics",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first Chinese university timetable to Google Calendar compatible ICS converter",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/styayur/terics.git"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "predev": "npm run sync:samples",
+    "dev": "vite",
+    "prebuild": "npm run sync:samples",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "sync:samples": "node scripts/sync-samples.mjs",
+    "test:consistency": "tsx scripts/consistency.ts",
+    "generate:golden": "node scripts/generate-golden.mjs"
+  },
+  "dependencies": {
+    "papaparse": "^5.7.0",
+    "read-excel-file": "^9.3.14"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.6",
+    "@types/papaparse": "^5.5.2",
+    "@vitest/coverage-v8": "^5.1.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "happy-dom": "^21.0.4",
+    "ical.js": "^2.2.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
+  }
+}

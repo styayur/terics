@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta name="theme-color" content="#111410" />
+    <meta
+      name="description"
+      content="terics 在浏览器本地把高校课表 HTML、CSV、XLSX 转换为 Google Calendar 兼容的 ICS 文件，不上传课表。"
+    />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <title>terics — 课表转 ICS</title>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+    <header class="topbar">
+      <a class="wordmark" href="./" aria-label="terics 首页">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40" role="img">
+            <path d="M5 9h30M5 20h21M5 31h30" />
+            <circle cx="31" cy="20" r="5" />
+            <path d="M31 12v4M31 24v4M23 20h4M35 20h4" />
+          </svg>
+        </span>
+        <span class="wordmark-text">TERICS</span>
+        <span class="wordmark-version">v0.1.0</span>
+      </a>
+      <div class="topbar-center">
+        <span>UNIVERSITY TIMETABLE → ICALENDAR</span>
+        <span class="rule"></span>
+        <span>BUILD 001</span>
+      </div>
+      <div class="local-badge" title="文件只在当前浏览器标签页内处理">
+        <span class="pulse"></span>
+        LOCAL / 0 UPLOAD
+      </div>
+    </header>
+
+    <div class="app-shell">
+      <aside class="rail" aria-label="流程和隐私说明">
+        <div class="rail-kicker">CONVERSION MANIFEST</div>
+        <ol class="steps" id="steps">
+          <li data-step="select" class="active">
+            <span class="step-number">01</span>
+            <span><strong>选择文件</strong><small>HTML / CSV / XLSX</small></span>
+          </li>
+          <li data-step="detect">
+            <span class="step-number">02</span>
+            <span><strong>自动识别</strong><small>按文件内容嗅探</small></span>
+          </li>
+          <li data-step="timing">
+            <span class="step-number">03</span>
+            <span><strong>确认时间</strong><small>学期与节次</small></span>
+          </li>
+          <li data-step="preview">
+            <span class="step-number">04</span>
+            <span><strong>预览课程</strong><small>检查冲突</small></span>
+          </li>
+          <li data-step="export">
+            <span class="step-number">05</span>
+            <span><strong>导出 ICS</strong><small>导入 Google Calendar</small></span>
+          </li>
+        </ol>
+
+        <div class="rail-block privacy-block">
+          <div class="block-label">PRIVACY CONTROL</div>
+          <p>课表文件由浏览器 JavaScript 在本地解析。没有后端、没有账号、没有 Cookie、没有上传请求。</p>
+          <div class="privacy-meter">
+            <span>LOCAL ONLY</span>
+            <span class="meter-track"><i></i></span>
+            <span>100%</span>
+          </div>
+        </div>
+
+        <div class="rail-block format-block">
+          <div class="block-label">FORMAT MATRIX</div>
+          <div class="matrix-row"><span>CSV</span><span class="ok">VERIFIED</span></div>
+          <div class="matrix-row"><span>HTML 表格</span><span class="ok">VERIFIED</span></div>
+          <div class="matrix-row"><span>XLSX</span><span class="ok">VERIFIED</span></div>
+          <div class="matrix-row muted"><span>旧版二进制 XLS</span><span>N/A</span></div>
+        </div>
+
+        <div class="rail-foot">
+          <span>RFC 5545</span>
+          <span>Asia/Shanghai</span>
+        </div>
+      </aside>
+
+      <main class="workbench">
+        <section class="panel ingest-panel" aria-labelledby="ingest-title">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow">01 / INGEST</div>
+              <h1 id="ingest-title">把课表变成日历事件</h1>
+            </div>
+            <div class="status-chip idle" id="parse-status" aria-live="polite">
+              <span class="status-dot"></span>
+              <span id="parse-status-text">等待文件</span>
+            </div>
+          </div>
+
+          <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="选择课表文件">
+            <input
+              id="file-input"
+              type="file"
+              accept=".html,.htm,.csv,.txt,.xls,.xlsx,text/csv,text/html,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              hidden
+            />
+            <div class="dropzone-crosshair" aria-hidden="true"></div>
+            <div class="dropzone-icon" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <path d="M32 8v32M20 20l12-12 12 12" />
+                <path d="M10 38v14h44V38" />
+                <path d="M17 45h8M39 45h8" />
+              </svg>
+            </div>
+            <div class="dropzone-copy">
+              <strong>拖入课表文件，或点击选择</strong>
+              <span>自动识别内容，不依赖扩展名 · 最大 10 MiB</span>
+            </div>
+            <div class="dropzone-tags">
+              <span>HTML</span><span>HTM</span><span>CSV</span><span>XLSX</span><span>HTML 伪装 .XLS</span>
+            </div>
+          </div>
+
+          <div class="sample-strip">
+            <span class="sample-label">载入测试样本</span>
+            <button type="button" class="sample-button" data-sample="csv">CSV / 结构化清单</button>
+            <button type="button" class="sample-button" data-sample="html">HTML / 青果列表</button>
+            <button type="button" class="sample-button" data-sample="xlsx">XLSX / 周网格</button>
+          </div>
+
+          <div class="parse-readout" id="parse-readout" hidden>
+            <div class="readout-file">
+              <span class="readout-label">SOURCE</span>
+              <strong id="source-file">—</strong>
+              <span id="source-meta">—</span>
+            </div>
+            <div class="readout-stat">
+              <span class="readout-label">FORMAT</span>
+              <strong id="detected-format">—</strong>
+            </div>
+            <div class="readout-stat">
+              <span class="readout-label">CONFIDENCE</span>
+              <strong id="detected-confidence">—</strong>
+            </div>
+            <div class="readout-stat">
+              <span class="readout-label">COURSES</span>
+              <strong id="parsed-course-count">0</strong>
+            </div>
+          </div>
+
+          <div class="issue-box" id="issue-box" hidden>
+            <div class="issue-heading">
+              <span>解析提示</span>
+              <span id="issue-count">0</span>
+            </div>
+            <ul id="issue-list"></ul>
+          </div>
+        </section>
+
+        <section class="panel settings-panel" id="settings-panel" aria-labelledby="settings-title">
+          <div class="panel-heading compact">
+            <div>
+              <div class="eyebrow">02 / CALIBRATE</div>
+              <h2 id="settings-title">确认学期与节次</h2>
+            </div>
+            <div class="heading-note">修改后自动重新计算</div>
+          </div>
+
+          <div class="field-grid">
+            <label class="field wide">
+              <span>日历名称</span>
+              <input id="calendar-title" type="text" maxlength="80" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>第 1 周周一</span>
+              <input id="semester-start" type="date" required />
+              <small id="monday-hint">必须是周一；选择其他日期会自动对齐。</small>
+            </label>
+            <label class="field">
+              <span>时区</span>
+              <input id="timezone" type="text" value="Asia/Shanghai" readonly />
+              <small>固定为 Asia/Shanghai（UTC+08:00）</small>
+            </label>
+            <label class="field">
+              <span>课前提醒</span>
+              <select id="alarm-minutes">
+                <option value="0">不提醒</option>
+                <option value="5">提前 5 分钟</option>
+                <option value="10">提前 10 分钟</option>
+                <option value="15">提前 15 分钟</option>
+                <option value="30">提前 30 分钟</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="period-section">
+            <div class="period-heading">
+              <div>
+                <h3>节次时间</h3>
+                <p>多节连堂使用首节开始与末节结束。可直接修正学校作息。</p>
+              </div>
+              <button type="button" class="text-button" id="reset-periods">恢复标准作息</button>
+            </div>
+            <div class="period-grid" id="period-grid" aria-label="自定义节次时间"></div>
+          </div>
+        </section>
+
+        <section class="panel preview-panel" id="preview-panel" aria-labelledby="preview-title">
+          <div class="panel-heading compact">
+            <div>
+              <div class="eyebrow">03 / INSPECT</div>
+              <h2 id="preview-title">预览课程</h2>
+            </div>
+            <div class="preview-actions">
+              <label class="mini-field">
+                <span>周次</span>
+                <select id="week-filter"><option value="all">全部</option></select>
+              </label>
+              <label class="mini-field search-field">
+                <span>筛选</span>
+                <input id="course-filter" type="search" placeholder="课程 / 教师 / 地点" />
+              </label>
+            </div>
+          </div>
+
+          <div class="preview-summary" id="preview-summary">
+            <div><span>EVENTS</span><strong id="event-count">0</strong></div>
+            <div><span>DATE RANGE</span><strong id="date-range">—</strong></div>
+            <div><span>CONFLICTS</span><strong id="conflict-count">0</strong></div>
+            <div><span>WEEKS</span><strong id="week-count">—</strong></div>
+          </div>
+
+          <div class="empty-state" id="preview-empty">
+            <span class="empty-index">00</span>
+            <p>解析文件后，这里会按实际日期展开每一周课程。</p>
+          </div>
+
+          <div class="table-wrap" id="preview-table-wrap" hidden>
+            <table class="event-table">
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>星期</th>
+                  <th>时间</th>
+                  <th>课程</th>
+                  <th>节次</th>
+                  <th>教师</th>
+                  <th>地点</th>
+                </tr>
+              </thead>
+              <tbody id="event-table-body"></tbody>
+            </table>
+            <div class="table-overflow-note" id="table-overflow-note" hidden></div>
+          </div>
+
+          <div class="conflict-box" id="conflict-box" hidden>
+            <div class="conflict-title">检测到课程时间冲突</div>
+            <ul id="conflict-list"></ul>
+            <label class="confirm-conflict">
+              <input id="conflict-ack" type="checkbox" />
+              <span>我已检查冲突，仍要导出全部事件</span>
+            </label>
+          </div>
+        </section>
+      </main>
+
+      <aside class="export-panel" aria-labelledby="export-title">
+        <div class="export-sticky">
+          <div class="eyebrow light">04 / EXPORT</div>
+          <h2 id="export-title">生成<br />标准 ICS</h2>
+          <p class="export-intro">按每周实际日期展开，稳定 UID，RFC 5545 折行，内嵌 Asia/Shanghai 时区。</p>
+
+          <div class="export-metrics">
+            <div><span>EVENTS</span><strong id="export-event-count">0</strong></div>
+            <div><span>FIRST</span><strong id="export-first-date">—</strong></div>
+            <div><span>LAST</span><strong id="export-last-date">—</strong></div>
+          </div>
+
+          <button type="button" class="export-button" id="export-button" disabled>
+            <span>下载 .ics 文件</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
+          </button>
+          <div class="export-state" id="export-state">等待有效课表</div>
+
+          <div class="import-guide">
+            <div class="guide-heading">GOOGLE CALENDAR 导入</div>
+            <ol>
+              <li><span>01</span>打开 Google Calendar 设置</li>
+              <li><span>02</span>选择“导入和导出”</li>
+              <li><span>03</span>上传本页生成的 .ics</li>
+              <li><span>04</span>选择目标日历并导入</li>
+            </ol>
+            <p>v0.1.0 不连接 Google 账号，不使用 OAuth 或 Calendar API。</p>
+          </div>
+
+          <div class="release-note">
+            <span>VERIFICATION NOTE</span>
+            <p>格式与 RFC 5545 已自动化验证；Google Calendar 网页端实际导入需人工账号环境，当前版本未声称已实测。</p>
+          </div>
+
+          <footer class="export-footer">
+            <span>TERICS 0.1.0</span>
+            <span>MIT LICENSE</span>
+            <a href="https://github.com/styayur/terics" target="_blank" rel="noreferrer">SOURCE ↗</a>
+          </footer>
+        </div>
+      </aside>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

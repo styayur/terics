@@ -1,0 +1,19 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
+import { describe, expect, it } from "vitest";
+
+describe("shared timetable schema", () => {
+  it("accepts the normalized parity example and rejects invalid weekdays", () => {
+    const schema = JSON.parse(readFileSync(resolve("schema/timetable.schema.json"), "utf8"));
+    const example = JSON.parse(readFileSync(resolve("fixtures/normalized/example.json"), "utf8"));
+    const ajv = new Ajv2020({ allErrors: true, strict: true });
+    addFormats(ajv);
+    const validate = ajv.compile(schema);
+    expect(validate(example), JSON.stringify(validate.errors)).toBe(true);
+    const invalid = structuredClone(example);
+    invalid.courses[0].weekday = 8;
+    expect(validate(invalid)).toBe(false);
+  });
+});

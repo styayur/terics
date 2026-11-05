@@ -1,0 +1,3 @@
+-r python/requirements.txt
+pytest>=8,<10
+icalendar>=6,<7

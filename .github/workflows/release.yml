@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to package and release
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: python/pyproject.toml
+      - run: npm ci
+      - run: python -m pip install -e "./python[dev]"
+      - run: npm run check
+      - run: npm test
+      - run: ruff check python main.pyw
+      - run: python -m pytest python/tests
+      - run: npm run test:consistency
+      - run: npm run build
+      - name: Package assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASSET_VERSION="${TAG}"
+          mkdir -p release/terics-python-${ASSET_VERSION}
+          cp -a main.pyw requirements.txt requirements-dev.txt README.md LICENSE THIRD_PARTY_NOTICES.md python schema spec fixtures docs release/terics-python-${ASSET_VERSION}/
+          find release/terics-python-${ASSET_VERSION} -type d -name __pycache__ -prune -exec rm -rf {} +
+          (cd release && zip -qr terics-python-${ASSET_VERSION}.zip terics-python-${ASSET_VERSION})
+          (cd dist && zip -qr ../release/terics-web-${ASSET_VERSION}.zip .)
+          cd release
+          sha256sum terics-web-${ASSET_VERSION}.zip terics-python-${ASSET_VERSION}.zip > SHA256SUMS.txt
+          NOTES="docs/release-notes-${TAG}.md"
+          if [ -f "../${NOTES}" ]; then cp "../${NOTES}" RELEASE_NOTES.md; else echo "See CHANGELOG for ${TAG}." > RELEASE_NOTES.md; fi
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ env.TAG }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_NAME="${VERSION}"
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            gh release edit "${TAG_NAME}" --notes-file release/RELEASE_NOTES.md
+            gh release upload "${TAG_NAME}" release/terics-web-${TAG_NAME}.zip release/terics-python-${TAG_NAME}.zip release/SHA256SUMS.txt --clobber
+          else
+            gh release create "${TAG_NAME}" \
+              release/terics-web-${TAG_NAME}.zip \
+              release/terics-python-${TAG_NAME}.zip \
+              release/SHA256SUMS.txt \
+              --title "terics ${TAG_NAME}" \
+              --notes-file release/RELEASE_NOTES.md \
+              --verify-tag
+          fi

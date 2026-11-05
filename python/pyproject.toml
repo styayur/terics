@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "terics"
+version = "0.1.0"
+description = "Local Chinese university timetable to ICS converter with a Tkinter GUI"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "styayur" }]
+dependencies = [
+  "beautifulsoup4>=4.13,<5",
+  "openpyxl>=3.1,<4"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+  "icalendar>=6,<8",
+  "ruff>=0.9,<1"
+]
+
+[project.scripts]
+terics = "terics.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["terics*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
