@@ -1,46 +1,48 @@
 # Third-Party Notices
 
-terics v0.1.0 is MIT licensed. The following third-party packages and public
-test samples are used or included. No source code is copied from GPL-licensed
-or unlicensed reference repositories.
+terics is MIT licensed. This file records third-party dependencies and redistributed fixtures. No code is copied from GPL or unlicensed repositories.
 
 ## Runtime dependencies (Web bundle)
 
 | Package | License | Purpose |
 |---|---|---|
-| `papaparse` | MIT | RFC 4180-style CSV/TSV parsing |
-| `read-excel-file` | MIT | Browser-side XLSX reading |
+| `papaparse` | MIT | CSV/TSV parsing |
+| `read-excel-file` | MIT | XLSX parsing |
 
-## Runtime dependencies (Python, installed by user)
+## Runtime dependencies (Python)
 
 | Package | License | Purpose |
 |---|---|---|
 | `beautifulsoup4` | MIT | HTML parsing |
-| `openpyxl` | MIT | XLSX reading |
+| `openpyxl` | MIT | XLSX parsing |
+| `playwright` | Apache-2.0 | Dedicated manual-login browser |
+| `google-auth-oauthlib` | Apache-2.0 | Desktop OAuth installed-app flow |
+| `google-api-python-client` | Apache-2.0 | Google Calendar API |
+| `keyring` | MIT | OS credential storage |
 
 ## Build and test dependencies
 
 | Package | License | Purpose |
 |---|---|---|
 | `typescript` | Apache-2.0 | TypeScript compiler |
-| `vite` | MIT | Static build |
-| `vitest` | MIT | Web unit tests |
-| `@playwright/test` | Apache-2.0 | Browser E2E tests |
-| `happy-dom` | MIT | DOM test environment |
+| `vite` | MIT | Static Web build |
+| `vitest` | MIT | Unit tests |
+| `@playwright/test` | Apache-2.0 | Web/extension E2E |
+| `happy-dom` | MIT | DOM tests |
 | `ical.js` | MPL-2.0 | Independent ICS verification |
 | `ajv`, `ajv-formats` | MIT | JSON Schema validation |
-| `tsx` | MIT | TypeScript consistency script |
+| `esbuild` | MIT | Extension/runtime bundles |
+| `adm-zip` | MIT | Extension ZIP packaging |
+| `tsx` | MIT | TypeScript scripts |
 | `pytest` | MIT | Python tests |
 | `icalendar` | BSD-2-Clause | Independent Python ICS verification |
-| `ruff` | MIT | Python static checks |
+| `ruff` | MIT | Python lint |
 
-Full license texts are distributed by their respective packages. Version pins
-are recorded in `package-lock.json` and `python/pyproject.toml`.
+Exact versions are recorded in `package-lock.json` and `python/pyproject.toml`. `npm run audit:licenses` and `scripts/audit_python_licenses.py` perform allow-list checks in CI.
 
 ## Public test fixtures from WakeUp Schedule
 
-The following files are copied from `Ricraft/wakeup-schedule` and are covered
-by the MIT license reproduced below:
+The following files are copied from `Ricraft/wakeup-schedule` under the MIT license reproduced below:
 
 - `fixtures/html/wakeup_usc_sample.html`
 - `fixtures/xlsx/wakeup_schedule_template.xlsx`
@@ -73,16 +75,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## Structural references only
+## Behavior and protocol research only
 
-- `LingNc/stnet_syllabus` (MIT): informed the field structure of the
-  Qingguo-style HTML list fixture. The fixture itself is fictional and created
-  for terics.
-- `hc-ui/kebiao2ics` (MIT): informed test scenarios for week parsing, conflict
-  detection, and RFC 5545 output.
-- `zaochih/zf-to-ics` (no repository license): read for research only; no code
-  or assets were copied.
-- `lingion/sleepy` (GPL-3.0): read for research only; no code or assets were
-  copied.
+- `LingNc/stnet_syllabus` (MIT): Qingguo-style list fields and test scenarios.
+- `hc-ui/kebiao2ics` (MIT): week/conflict/ICS test scenarios.
+- `Ricraft/wakeup-schedule` (MIT): public fixtures and HTML/XLSX layout scenarios.
+- `lingion/sleepy` (GPL-3.0): WHUT jwapp endpoint/field/role-mapping research only; no source or assets copied.
+- `zaochih/zf-to-ics` (no repository license): Zhengfang field/protocol behavior research only; no code or assets copied.
+
+WHUT section mapping facts were cross-checked against public MIT and protocol-research sources. The test data in `fixtures/connectors/whut/` is fictional and created for terics.
 
 All trademarks belong to their respective owners.

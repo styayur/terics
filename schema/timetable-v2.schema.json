@@ -1,0 +1,709 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/styayur/terics/blob/main/schema/timetable-v2.schema.json",
+  "title": "terics .terics.json exchange format v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "source",
+    "term",
+    "courses",
+    "overrides",
+    "metadata",
+    "validation"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "2.0"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "adapterId",
+        "adapterVersion",
+        "extractedAt"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "extension",
+            "desktop",
+            "file",
+            "web"
+          ]
+        },
+        "adapterId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adapterVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schoolId": {
+          "type": "string"
+        },
+        "schoolName": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "sourceUrl": {
+          "type": "string"
+        },
+        "extractedAt": {
+          "type": "string"
+        }
+      }
+    },
+    "term": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "termId",
+        "academicYear",
+        "termCode",
+        "termName",
+        "semesterStart",
+        "teachingWeeks",
+        "timezone",
+        "periodSchedules"
+      ],
+      "properties": {
+        "termId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "academicYear": {
+          "type": "string"
+        },
+        "termCode": {
+          "type": "string"
+        },
+        "termName": {
+          "type": "string"
+        },
+        "semesterStart": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "teachingWeeks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "campus": {
+          "type": "string"
+        },
+        "periodSchedules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "label",
+              "effectiveFrom",
+              "periods"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string"
+              },
+              "effectiveFrom": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "effectiveTo": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "periods": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "index",
+                    "start",
+                    "end"
+                  ],
+                  "properties": {
+                    "index": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 30
+                    },
+                    "start": {
+                      "type": "string",
+                      "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "end": {
+                      "type": "string",
+                      "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "courses": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "meetings"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string"
+          },
+          "credits": {
+            "type": "number",
+            "minimum": 0
+          },
+          "teachingClass": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/$defs/courseSource"
+          },
+          "meetings": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/meeting"
+            }
+          }
+        }
+      }
+    },
+    "overrides": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/override_cancel"
+          },
+          {
+            "$ref": "#/$defs/override_reschedule"
+          },
+          {
+            "$ref": "#/$defs/override_makeup"
+          },
+          {
+            "$ref": "#/$defs/override_change"
+          }
+        ]
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "extractedAt",
+        "sourceKind",
+        "method",
+        "rawCount",
+        "parsedCount",
+        "skippedCount",
+        "adapterId",
+        "adapterVersion"
+      ],
+      "properties": {
+        "extractedAt": {
+          "type": "string"
+        },
+        "sourceKind": {
+          "enum": [
+            "extension",
+            "desktop",
+            "file",
+            "web"
+          ]
+        },
+        "method": {
+          "enum": [
+            "api",
+            "export",
+            "dom",
+            "file",
+            "manual"
+          ]
+        },
+        "sourceUrl": {
+          "type": "string"
+        },
+        "rawCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "parsedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skippedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "adapterId": {
+          "type": "string"
+        },
+        "adapterVersion": {
+          "type": "string"
+        },
+        "schoolId": {
+          "type": "string"
+        },
+        "schoolName": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "userNote": {
+          "type": "string"
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "checks",
+        "completeness"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "verified",
+            "partial",
+            "failed"
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "status",
+              "message"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "pass",
+                  "warn",
+                  "fail"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "completeness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "courseCount",
+            "meetingCount",
+            "missingTeacher",
+            "missingRoom",
+            "missingPeriods",
+            "unknownWeekRules",
+            "adjustmentDataAvailable"
+          ],
+          "properties": {
+            "courseCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "meetingCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missingTeacher": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missingRoom": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missingPeriods": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unknownWeekRules": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "adjustmentDataAvailable": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "courseSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "adapterId": {
+          "type": "string"
+        },
+        "adapterVersion": {
+          "type": "string"
+        },
+        "schoolId": {
+          "type": "string"
+        },
+        "sourceCourseId": {
+          "type": "string"
+        },
+        "sourceRef": {
+          "type": "string"
+        }
+      }
+    },
+    "meeting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "teacher",
+        "room",
+        "weekday",
+        "startPeriod",
+        "endPeriod",
+        "weeks",
+        "weekRule"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "teacher": {
+          "type": "string"
+        },
+        "room": {
+          "type": "string"
+        },
+        "campus": {
+          "type": "string"
+        },
+        "weekday": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "startPeriod": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "endPeriod": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "weeks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          }
+        },
+        "weekRule": {
+          "type": "string"
+        },
+        "startDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "endDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "startTime": {
+          "type": "string",
+          "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "endTime": {
+          "type": "string",
+          "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "note": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/courseSource"
+        }
+      }
+    },
+    "override_cancel": {
+      "required": [
+        "id",
+        "type",
+        "courseId",
+        "meetingId",
+        "originalDate",
+        "confirmed"
+      ],
+      "properties": {
+        "type": {
+          "const": "cancel"
+        },
+        "originalDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "id": {
+          "type": "string"
+        },
+        "courseId": {
+          "type": "string"
+        },
+        "meetingId": {
+          "type": "string"
+        },
+        "confirmed": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "override_reschedule": {
+      "required": [
+        "id",
+        "type",
+        "courseId",
+        "meetingId",
+        "originalDate",
+        "newDate",
+        "confirmed"
+      ],
+      "properties": {
+        "type": {
+          "const": "reschedule"
+        },
+        "originalDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "newDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "startPeriod": {
+          "type": "integer"
+        },
+        "endPeriod": {
+          "type": "integer"
+        },
+        "startTime": {
+          "type": "string",
+          "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "endTime": {
+          "type": "string",
+          "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "room": {
+          "type": "string"
+        },
+        "teacher": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "courseId": {
+          "type": "string"
+        },
+        "meetingId": {
+          "type": "string"
+        },
+        "confirmed": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "override_makeup": {
+      "required": [
+        "id",
+        "type",
+        "courseId",
+        "meetingId",
+        "newDate",
+        "confirmed"
+      ],
+      "properties": {
+        "type": {
+          "const": "makeup"
+        },
+        "newDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "startPeriod": {
+          "type": "integer"
+        },
+        "endPeriod": {
+          "type": "integer"
+        },
+        "startTime": {
+          "type": "string",
+          "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "endTime": {
+          "type": "string",
+          "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "room": {
+          "type": "string"
+        },
+        "teacher": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "courseId": {
+          "type": "string"
+        },
+        "meetingId": {
+          "type": "string"
+        },
+        "confirmed": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "override_change": {
+      "required": [
+        "id",
+        "type",
+        "courseId",
+        "meetingId",
+        "originalDate",
+        "confirmed"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "room_change",
+            "teacher_change",
+            "period_change"
+          ]
+        },
+        "originalDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "room": {
+          "type": "string"
+        },
+        "teacher": {
+          "type": "string"
+        },
+        "startPeriod": {
+          "type": "integer"
+        },
+        "endPeriod": {
+          "type": "integer"
+        },
+        "startTime": {
+          "type": "string",
+          "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "endTime": {
+          "type": "string",
+          "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "id": {
+          "type": "string"
+        },
+        "courseId": {
+          "type": "string"
+        },
+        "meetingId": {
+          "type": "string"
+        },
+        "confirmed": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    }
+  }
+}

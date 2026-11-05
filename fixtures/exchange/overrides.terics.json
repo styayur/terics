@@ -1,0 +1,188 @@
+{
+  "schemaVersion": "2.0",
+  "source": {
+    "kind": "file",
+    "adapterId": "fixture-v2",
+    "adapterVersion": "0.5.0",
+    "schoolId": "fixture",
+    "schoolName": "测试大学",
+    "platform": "fixture",
+    "extractedAt": "2026-08-01T00:00:00.000Z"
+  },
+  "term": {
+    "termId": "2026-2027-1",
+    "academicYear": "2026-2027",
+    "termCode": "1",
+    "termName": "2026 秋季调课测试",
+    "semesterStart": "2026-08-31",
+    "teachingWeeks": 12,
+    "timezone": "Asia/Shanghai",
+    "campus": "主校区",
+    "periodSchedules": [
+      {
+        "id": "s1",
+        "label": "第一套",
+        "effectiveFrom": "2026-08-31",
+        "effectiveTo": "2026-10-31",
+        "periods": [
+          {
+            "index": 1,
+            "start": "08:00",
+            "end": "08:45"
+          },
+          {
+            "index": 2,
+            "start": "08:55",
+            "end": "09:40"
+          },
+          {
+            "index": 3,
+            "start": "10:00",
+            "end": "10:45"
+          },
+          {
+            "index": 4,
+            "start": "10:55",
+            "end": "11:40"
+          },
+          {
+            "index": 13,
+            "start": "22:40",
+            "end": "23:25"
+          }
+        ]
+      },
+      {
+        "id": "s2",
+        "label": "第二套",
+        "effectiveFrom": "2026-11-01",
+        "periods": [
+          {
+            "index": 1,
+            "start": "08:30",
+            "end": "09:15"
+          },
+          {
+            "index": 2,
+            "start": "09:25",
+            "end": "10:10"
+          },
+          {
+            "index": 3,
+            "start": "10:30",
+            "end": "11:15"
+          },
+          {
+            "index": 4,
+            "start": "11:25",
+            "end": "12:10"
+          },
+          {
+            "index": 13,
+            "start": "22:40",
+            "end": "23:25"
+          }
+        ]
+      }
+    ]
+  },
+  "courses": [
+    {
+      "id": "course-override-demo",
+      "name": "数据结构",
+      "teachingClass": "01班",
+      "meetings": [
+        {
+          "id": "meeting-override-demo",
+          "teacher": "张老师",
+          "room": "A101",
+          "campus": "主校区",
+          "weekday": 1,
+          "startPeriod": 1,
+          "endPeriod": 2,
+          "weeks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "weekRule": "1-12"
+        }
+      ]
+    }
+  ],
+  "overrides": [
+    {
+      "id": "cancel-2",
+      "type": "cancel",
+      "courseId": "course-override-demo",
+      "meetingId": "meeting-override-demo",
+      "originalDate": "2026-09-07",
+      "confirmed": true,
+      "reason": "停课"
+    },
+    {
+      "id": "move-3",
+      "type": "reschedule",
+      "courseId": "course-override-demo",
+      "meetingId": "meeting-override-demo",
+      "originalDate": "2026-09-14",
+      "newDate": "2026-09-19",
+      "startPeriod": 3,
+      "endPeriod": 4,
+      "room": "B202",
+      "confirmed": true,
+      "reason": "调课"
+    },
+    {
+      "id": "makeup-4",
+      "type": "makeup",
+      "courseId": "course-override-demo",
+      "meetingId": "meeting-override-demo",
+      "newDate": "2026-09-25",
+      "startPeriod": 3,
+      "endPeriod": 4,
+      "confirmed": true,
+      "reason": "补课"
+    },
+    {
+      "id": "unconfirmed",
+      "type": "cancel",
+      "courseId": "course-override-demo",
+      "meetingId": "meeting-override-demo",
+      "originalDate": "2026-09-21",
+      "confirmed": false
+    }
+  ],
+  "metadata": {
+    "extractedAt": "2026-08-01T00:00:00.000Z",
+    "sourceKind": "file",
+    "method": "manual",
+    "rawCount": 1,
+    "parsedCount": 1,
+    "skippedCount": 0,
+    "adapterId": "fixture-v2",
+    "adapterVersion": "0.5.0"
+  },
+  "validation": {
+    "status": "verified",
+    "checks": [],
+    "completeness": {
+      "courseCount": 1,
+      "meetingCount": 1,
+      "missingTeacher": 0,
+      "missingRoom": 0,
+      "missingPeriods": 0,
+      "unknownWeekRules": 0,
+      "adjustmentDataAvailable": true
+    }
+  }
+}

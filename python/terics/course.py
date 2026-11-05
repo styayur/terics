@@ -161,16 +161,15 @@ def build_events(config: SemesterConfig, raw_courses: list[RawCourse]) -> BuildR
             day = date_for_class(config.semester_start, week, course.weekday)
             start = start_period_time.start
             end = end_period_time.end
-            uid_key = "\x1f".join(
+            course_anchor = course.source_ref.strip() or "|".join(
                 [
-                    course.name,
-                    course.teacher,
-                    course.location,
-                    day,
+                    str(course.weekday),
                     str(course.start_period),
                     str(course.end_period),
+                    ",".join(str(value) for value in course.weeks),
                 ]
             )
+            uid_key = "\x1f".join([course_anchor, day, str(course.start_period), str(course.end_period)])
             uid = stable_uid(uid_key)
             if uid in seen_uids:
                 continue

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.5.0-rc.1"
 TIMEZONE = "Asia/Shanghai"
 DEFAULT_MAX_WEEK = 30
 
@@ -106,6 +106,39 @@ class Conflict:
 @dataclass(slots=True)
 class BuildResult:
     events: list[CalendarEvent]
+    conflicts: list[Conflict]
+    issues: list[ParseIssue]
+
+
+@dataclass(slots=True)
+class TimetableEventV2:
+    uid: str
+    course_id: str
+    meeting_id: str
+    title: str
+    teacher: str
+    room: str
+    campus: str
+    note: str
+    weekday: int
+    start_period: int
+    end_period: int
+    week: int
+    date: str
+    start: str
+    end: str
+    start_date_time: str
+    end_date_time: str
+    week_rule: str
+    adapter_id: str
+    adapter_version: str
+    school_id: str
+    term_id: str
+
+
+@dataclass(slots=True)
+class BuildV2Result:
+    events: list[TimetableEventV2]
     conflicts: list[Conflict]
     issues: list[ParseIssue]
 

@@ -2,9 +2,11 @@ import { Window } from "happy-dom";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
-import { buildEvents } from "../src/core/course.ts";
-import { parseTimetableFile } from "../src/core/parsers/index.ts";
-import { DEFAULT_PERIODS, TIMEZONE, type ParseResult } from "../src/core/types.ts";
+import { buildEvents } from "../src/core/course";
+import { parseTimetableFile } from "../src/core/parsers/index";
+import { DEFAULT_PERIODS, TIMEZONE, type ParseResult } from "../src/core/types";
+import { parseTericsJson } from "../src/v2/exchange";
+import { buildV2Events } from "../src/v2/events";
 
 const dom = new Window();
 (globalThis as Record<string, unknown>).window = dom;
@@ -75,11 +77,51 @@ for (const fixture of fixtures) {
   });
 }
 
-const pythonCandidates = [
+const v2Timetable = parseTericsJson(readFileSync(resolve("fixtures/exchange/overrides.terics.json"), "utf8"));
+const v2Build = await buildV2Events(v2Timetable);
+snapshot.push({
+  fixture: "fixtures/exchange/overrides.terics.json",
+  format: "terics-v2",
+  courses: v2Timetable.courses
+    .map((course) => ({
+      id: course.id,
+      name: course.name,
+      meetings: course.meetings
+        .map((meeting) => ({
+          id: meeting.id,
+          teacher: meeting.teacher,
+          room: meeting.room,
+          weekday: meeting.weekday,
+          startPeriod: meeting.startPeriod,
+          endPeriod: meeting.endPeriod,
+          weeks: [...meeting.weeks],
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id)),
+  events: v2Build.events
+    .map((event) => ({
+      uid: event.uid,
+      title: event.title,
+      teacher: event.teacher,
+      location: event.room,
+      weekday: event.weekday,
+      startPeriod: event.startPeriod,
+      endPeriod: event.endPeriod,
+      week: event.week,
+      date: event.date,
+      start: event.start,
+      end: event.end,
+    }))
+    .sort((a, b) => a.uid.localeCompare(b.uid)),
+  conflictCount: v2Build.conflicts.length,
+});
+
+const pythonCandidates: string[] = [
   process.env.PYTHON,
   process.platform === "win32" ? resolve(".venv/Scripts/python.exe") : resolve(".venv/bin/python"),
   process.platform === "win32" ? "python" : "python3",
-].filter(Boolean);
+].filter((value): value is string => Boolean(value));
 
 let pythonRun;
 for (const candidate of pythonCandidates) {

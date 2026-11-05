@@ -1,0 +1,68 @@
+{
+  "datas": {
+    "cxxszhxqkb": {
+      "rows": [
+        {
+          "KCM": "模拟电子技术基础B",
+          "KCH": "10114111015",
+          "SKJS": "测试教师甲",
+          "JASMC": "南湖-爱特楼-208",
+          "XXXQDM_DISPLAY": "南湖校区",
+          "SKXQ": 2,
+          "KSJC": 1,
+          "JSJC": 2,
+          "SKZC": "000001111111111000000000000000",
+          "ZCMC": "6-15周",
+          "KBID": "kb-analog-01",
+          "WID": "wid-analog-01",
+          "KSSJ": "08:00",
+          "JSSJ": "09:45",
+          "KCXZDM_DISPLAY": "学科必修",
+          "JXBID": "20261-01317",
+          "SKBJ": "机器人2503",
+          "XF": 3
+        },
+        {
+          "KCM": "世界美术欣赏",
+          "KCH": "20100000001",
+          "SKJS": "测试教师乙",
+          "JASMC": "北院-艺术楼-101",
+          "XXXQDM_DISPLAY": "南湖校区",
+          "SKXQ": 5,
+          "KSJC": 14,
+          "JSJC": 16,
+          "SKZC": "000000000001000000000000000000",
+          "ZCMC": "12周",
+          "KBID": "kb-art-01",
+          "WID": "wid-art-01",
+          "KSSJ": "19:00",
+          "JSSJ": "21:25",
+          "KCXZDM_DISPLAY": "公共选修",
+          "JXBID": "20261-09999",
+          "SKBJ": "美术-1班",
+          "XF": 1.5
+        },
+        {
+          "KCM": "大学英语3",
+          "KCH": "10201121072",
+          "SKJS": "测试教师丙",
+          "JASMC": "南院-博学北楼-504",
+          "XXXQDM_DISPLAY": "南湖校区",
+          "SKXQ": 1,
+          "KSJC": 1,
+          "JSJC": 2,
+          "SKZC": "010101010101010100000000000000",
+          "ZCMC": "1-16周(双)",
+          "KBID": "kb-english-01",
+          "WID": "wid-english-01",
+          "KSSJ": "08:00",
+          "JSSJ": "09:45",
+          "KCXZDM_DISPLAY": "英语必修",
+          "JXBID": "20261-09751",
+          "SKBJ": "英语-09751",
+          "XF": 2
+        }
+      ]
+    }
+  }
+}

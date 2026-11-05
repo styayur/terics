@@ -1,6 +1,6 @@
 # 支持的输入格式
 
-v0.1.0 按文件内容识别格式，不依赖扩展名。
+v0.5.0-rc.1 的文件导入仍按内容识别格式，不依赖扩展名。
 
 ## 1. CSV / TSV 长表
 
@@ -110,9 +110,36 @@ A101
 
 - 不登录教务系统，不抓取网页。
 - 不支持扫描图片、PDF、加密 XLSX、宏或旧版 OLE `.xls`。
-- 不支持按校区/周次切换多套节次时间；v0.1.0 使用一组节次表。
+- `.terics.json` schema 2.0 支持多套有效期节次表；传统 CSV/HTML/XLSX 文件导入仍使用用户确认的一套节次。
 - 不自动识别学期第一周周一；必须由用户确认。
 - 不合并跨节次但中间有休息的课程为单一连续块。
 - 仅经过测试样本验证的字段组合可稳定导入；本校变体可能需要贡献 Adapter。
 
 提交新格式前请使用虚构/脱敏数据，并阅读 `CONTRIBUTING.md`。
+
+
+## 7. `.terics.json` schema 2.0
+
+浏览器扩展、Web 和 Python 桌面版之间使用统一交换格式。顶层字段：
+
+- `schemaVersion: "2.0"`
+- `source`
+- `term`
+- `courses`
+- `overrides`
+- `metadata`
+- `validation`
+- optional `warnings`
+
+关键特性：
+
+- 稳定 `course.id` / `meeting.id`；
+- 周次显式数组；
+- `periodSchedules` 支持生效日期范围；
+- `overrides` 支持停课、调课、补课、教室/教师/节次变更；
+- `validation.completeness` 明确缺失字段；
+- 禁止 credential-like 字段。
+
+Schema: `schema/timetable-v2.schema.json`。
+
+Web/Python 可直接导入该文件。扩展可通过 URL fragment 打开 Web，也可下载 `.terics.json`。

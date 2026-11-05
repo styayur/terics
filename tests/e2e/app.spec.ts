@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import ICAL from "ical.js";
+import { encodeTericsFragment, parseTericsJson } from "../../src/v2/exchange";
 
 test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
@@ -9,7 +10,7 @@ test.beforeEach(async ({ page }) => {
   });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "把课表变成日历事件" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "把教务课表变成日历事件" })).toBeVisible();
   await expect(page.getByText("LOCAL / 0 UPLOAD")).toBeVisible();
   (page as typeof page & { __consoleErrors?: string[] }).__consoleErrors = errors;
 });
@@ -55,6 +56,34 @@ test("requires explicit acknowledgement before exporting conflicts", async ({ pa
   await expect(page.locator("#export-button")).toBeDisabled();
   await page.locator("#conflict-ack").check();
   await expect(page.locator("#export-button")).toBeEnabled();
+});
+
+test("imports a terics v2 exchange sample and exports v2 ICS", async ({ page }) => {
+  await page.getByRole("button", { name: /\.terics\.json \/ 扩展交接/ }).click();
+  await expect(page.locator("#parsed-course-count")).toHaveText("2", { timeout: 15_000 });
+  await expect(page.locator("#event-count")).toHaveText("11");
+  await expect(page.locator("#detected-format")).toContainText("金智");
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#export-button").click();
+  const download = await downloadPromise;
+  const path = await download.path();
+  const ics = await readFile(path!, "utf8");
+  const calendar = new ICAL.Component(ICAL.parse(ics));
+  expect(calendar.getAllSubcomponents("vevent")).toHaveLength(11);
+});
+
+test("accepts extension data through a URL fragment without a server upload", async ({ page }) => {
+  const fixtureText = await readFile("fixtures/exchange/terics-example.terics.json", "utf8");
+  const fragment = encodeTericsFragment(parseTericsJson(fixtureText));
+  await page.goto(`/#${fragment}`);
+  await expect(page.locator("#parsed-course-count")).toHaveText("2", { timeout: 15_000 });
+  await expect(page.locator("#event-count")).toHaveText("11");
+  expect(new URL(page.url()).hash).toBe("");
+});
+
+test("shows Google sync as explicitly disabled when OAuth is not configured", async ({ page }) => {
+  await expect(page.locator("#google-unavailable")).toBeVisible();
+  await expect(page.locator("#google-unavailable")).toContainText("VITE_GOOGLE_CLIENT_ID");
 });
 
 test("applies a custom period time to the generated event preview", async ({ page }) => {

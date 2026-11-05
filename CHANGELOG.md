@@ -1,27 +1,40 @@
 # Changelog
 
-## v0.1.0 — 2026-11-05
+## v0.5.0-rc.1 — 2026-11-05
 
-Initial public release.
+Release candidate status: real student-account SIS extraction and real Google OAuth/Calendar sync are not verified.
 
 ### Added
 
-- Static TypeScript/Vite web app with local content sniffing and ICS export.
-- Python 3.12+ Tkinter GUI launched by `main.pyw`.
-- CSV/TSV, HTML list/grid, and XLSX parser adapters.
-- Odd/even, sparse, and range weeks; multi-period classes; custom period times.
-- Stable SHA-256 event UIDs and internal deduplication.
-- Conflict detection and explicit conflict acknowledgement.
-- RFC 5545 ICS with `Asia/Shanghai`, `VTIMEZONE`, CRLF, escaping, and UTF-8 safe
-  line folding.
-- Shared JSON Schema, business rules, fixtures, and cross-language parity test.
-- Automated Web, Python, Playwright, and independent ICS parser verification.
-- GitHub Actions CI and GitHub Pages deployment.
+- Connector SDK, vendor adapters and school profile registry.
+- Experimental Wisedu/WHUT, Zhengfang, Qiangzhi, Qingguo and generic DOM adapters.
+- Manifest V3 Chrome/Edge extension with `activeTab`-only extraction.
+- Shared `.terics.json` schema 2.0 import/export.
+- Python Playwright worker with dedicated persistent browser profile and clear-login action.
+- Stable course/meeting/event identities independent of display title, teacher and room.
+- Schedule overrides: cancellation, reschedule, makeup, room/teacher/period changes.
+- Effective-dated multiple period schedules.
+- Google Calendar incremental sync planner, REST/API clients, extended properties and delete confirmation.
+- Web Google Identity Services configuration and Python Desktop OAuth/keyring support.
+- Threat model, privacy, data-flow, support matrix, connector and extension documentation.
+- GitHub Actions coverage for Web, Extension build, Playwright, Python, consistency, dependency audit and license audit.
+
+### Changed
+
+- App and release channel updated to v0.5.0-rc.1.
+- Existing HTML/CSV/XLSX import remains supported.
+- Web/Python event consistency fixtures extended with schema 2.0 and override cases.
+- Legacy file-import UIDs now use source anchors and section/date rather than mutable display fields. Re-importing a v0.1-generated ICS into the same calendar may create duplicates; review before importing.
 
 ### Known limitations
 
-- Google Calendar real-account import was not verified.
-- No OAuth or Calendar API writes.
-- No old binary OLE `.xls`, PDF/image OCR, encrypted workbooks, or macros.
-- One period-time table per export; no mid-semester schedule switching.
-- School-specific variant coverage is format-level, not nationwide certification.
+- Real WHUT/other school login verification was unavailable.
+- Real Google Calendar OAuth and write acceptance was unavailable.
+- Adapters are Experimental, not Verified.
+- No PyInstaller executable is included without a tested/signed build.
+- No Chrome Web Store publication is included.
+- One XLSX size cap is enforced, but no separate decompression-bomb quota is implemented.
+
+## v0.1.0 — 2026-11-05
+
+Initial public release with static Web, Python Tkinter, CSV/HTML/XLSX file import, stable UIDs, conflicts and RFC 5545 ICS.

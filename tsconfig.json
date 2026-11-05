@@ -16,7 +16,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node", "vitest/globals", "chrome"]
   },
-  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
+  "include": ["src", "tests", "extension", "scripts", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
 }

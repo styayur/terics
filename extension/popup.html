@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>terics Timetable Bridge</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">≡ TERICS <span>v0.5.0-rc.1</span></div>
+      <div class="local">LOCAL / 0 UPLOAD</div>
+    </header>
+    <main>
+      <section class="hero">
+        <div class="eyebrow">CURRENT SIS PAGE</div>
+        <h1>从已登录教务<br />提取课表</h1>
+        <p class="page-label" id="page-label">正在读取当前标签页…</p>
+        <div class="status" id="status" data-kind="idle">等待主动提取</div>
+      </section>
+
+      <section class="form-section">
+        <label class="field">
+          <span>优先 Adapter</span>
+          <select id="adapter-select"><option value="">自动识别</option></select>
+        </label>
+        <div class="two">
+          <label class="field">
+            <span>第 1 周周一</span>
+            <input id="start-date" type="date" />
+          </label>
+          <label class="field">
+            <span>教学周数</span>
+            <input id="teaching-weeks" type="number" min="1" max="30" value="20" />
+          </label>
+        </div>
+        <div class="two">
+          <label class="field">
+            <span>学年</span>
+            <input id="academic-year" type="text" placeholder="2026-2027" />
+          </label>
+          <label class="field">
+            <span>学期代码</span>
+            <input id="term-code" type="text" placeholder="1 / 3 / 12" />
+          </label>
+        </div>
+        <label class="field">
+          <span>学期名称</span>
+          <input id="term-name" type="text" placeholder="2026 秋季课表" />
+        </label>
+        <button class="primary" id="extract-button" type="button">检测并提取当前课表</button>
+        <p class="hint">只有点击按钮后才会注入本地 Connector，仅执行只读请求；不会读取 Cookie 数据库。</p>
+      </section>
+
+      <section class="result" id="result" hidden>
+        <div class="result-head">
+          <div>
+            <div class="eyebrow">EXTRACTION REPORT</div>
+            <strong id="result-title">—</strong>
+          </div>
+          <span id="validation-badge">—</span>
+        </div>
+        <div class="metrics">
+          <div><span>COURSES</span><strong id="course-count">0</strong></div>
+          <div><span>MEETINGS</span><strong id="meeting-count">0</strong></div>
+          <div><span>EVENTS</span><strong id="event-count">0</strong></div>
+          <div><span>CONFLICTS</span><strong id="conflict-count">0</strong></div>
+        </div>
+        <div class="warning-list" id="warning-list"></div>
+        <label class="ack" id="ack-row" hidden>
+          <input id="conflict-ack" type="checkbox" />
+          <span>我已检查冲突，仍允许导出 ICS</span>
+        </label>
+        <div class="actions">
+          <button id="json-button" type="button">下载 .terics.json</button>
+          <button id="ics-button" type="button">下载 ICS</button>
+          <button id="web-button" type="button">在 Web 中打开</button>
+        </div>
+      </section>
+
+      <section class="error" id="error-box" hidden></section>
+
+      <footer>
+        <button class="link-button" id="clear-button" type="button">清除扩展本地数据</button>
+        <span>activeTab · scripting · storage</span>
+      </footer>
+    </main>
+    <script src="popup.js" defer></script>
+  </body>
+</html>

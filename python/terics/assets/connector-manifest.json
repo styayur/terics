@@ -1,0 +1,181 @@
+{
+  "sdkVersion": "1.0",
+  "adapters": [
+    {
+      "id": "whut-wisedu-jwapp",
+      "version": "0.5.0",
+      "vendor": "wisedu",
+      "vendorLabel": "金智 Wisedu jwapp",
+      "schoolId": "whut",
+      "schoolName": "武汉理工大学",
+      "platformVersion": "jwapp / wdkbby (2026 layout)",
+      "status": "experimental",
+      "capabilities": [
+        "timetable",
+        "semester",
+        "periods",
+        "classroom",
+        "adjustments"
+      ],
+      "verifiedDomains": [
+        "jwxt.whut.edu.cn",
+        "zhlgd.whut.edu.cn"
+      ],
+      "methods": [
+        "api",
+        "dom"
+      ],
+      "evidenceUrls": [
+        "https://github.com/lingion/sleepy/blob/main/app/src/main/java/com/lingion/sleepy/data/jw/JwWhutParser.kt",
+        "https://github.com/lingion/sleepy/blob/main/docs/schools-list.md"
+      ],
+      "limitations": [
+        "协议结构来自公开 MIT/行为研究资料，尚未完成本项目的真实学生账号端到端验收。",
+        "学期第一周周一通常需要用户确认。",
+        "调课数据仅在教务接口明确返回时使用，缺失时不会自动推断。"
+      ]
+    },
+    {
+      "id": "zf-jwglxt",
+      "version": "0.5.0",
+      "vendor": "zf",
+      "vendorLabel": "正方教务 JWGLXT",
+      "platformVersion": "V8/V9 compatible",
+      "status": "experimental",
+      "capabilities": [
+        "timetable",
+        "semester",
+        "periods",
+        "classroom"
+      ],
+      "verifiedDomains": [],
+      "methods": [
+        "api",
+        "dom"
+      ],
+      "limitations": [
+        "不同学校的新版正方页面、字段与学期代码存在差异。",
+        "学期开始日期与节次时间通常需要用户确认。",
+        "未完成真实学校端到端验收。"
+      ]
+    },
+    {
+      "id": "qiangzhi-dom",
+      "version": "0.5.0",
+      "vendor": "qiangzhi",
+      "vendorLabel": "强智教务",
+      "platformVersion": "DOM generic",
+      "status": "experimental",
+      "capabilities": [
+        "timetable",
+        "classroom"
+      ],
+      "verifiedDomains": [],
+      "methods": [
+        "dom"
+      ],
+      "limitations": [
+        "当前版本使用 DOM 表格提取，无法保证获得官方调课数据。",
+        "不同强智部署的单元格结构可能不同。",
+        "未完成真实学校端到端验收。"
+      ]
+    },
+    {
+      "id": "qingguo-dom",
+      "version": "0.5.0",
+      "vendor": "qingguo",
+      "vendorLabel": "青果教务",
+      "platformVersion": "DOM list/grid",
+      "status": "experimental",
+      "capabilities": [
+        "timetable",
+        "classroom"
+      ],
+      "verifiedDomains": [],
+      "methods": [
+        "dom",
+        "export"
+      ],
+      "limitations": [
+        "当前版本优先解析已渲染表格或官方导出 HTML。",
+        "调课、停课与校历信息可能不可获得。",
+        "未完成真实学校端到端验收。"
+      ]
+    },
+    {
+      "id": "wisedu-jwapp",
+      "version": "0.5.0",
+      "vendor": "wisedu",
+      "vendorLabel": "金智 Wisedu jwapp",
+      "platformVersion": "jwapp",
+      "status": "experimental",
+      "capabilities": [
+        "timetable",
+        "semester",
+        "periods",
+        "classroom"
+      ],
+      "verifiedDomains": [],
+      "methods": [
+        "api",
+        "dom"
+      ],
+      "limitations": [
+        "通用金智适配器尚未完成真实学校端到端验收。"
+      ]
+    },
+    {
+      "id": "generic-dom",
+      "version": "0.5.0",
+      "vendor": "generic",
+      "vendorLabel": "通用 HTML 表格",
+      "status": "experimental",
+      "capabilities": [
+        "timetable"
+      ],
+      "verifiedDomains": [],
+      "methods": [
+        "dom"
+      ],
+      "limitations": [
+        "仅在用户主动点击提取时运行。",
+        "不保证获得调课、校历、学分或课程性质。",
+        "格式复杂时请使用文件导出并导入 Web/Python。"
+      ]
+    }
+  ],
+  "schools": [
+    {
+      "id": "whut",
+      "name": "武汉理工大学",
+      "vendor": "wisedu",
+      "platformVersion": "jwapp / wdkbby (2026 layout)",
+      "entryUrl": "https://jwxt.whut.edu.cn/jwapp/sys/homeapp/index.do?forceCas=1",
+      "domains": [
+        "jwxt.whut.edu.cn",
+        "zhlgd.whut.edu.cn"
+      ],
+      "status": "experimental",
+      "capabilities": [
+        "timetable",
+        "semester",
+        "periods",
+        "classroom",
+        "adjustments"
+      ],
+      "methods": [
+        "api",
+        "dom"
+      ],
+      "evidenceUrls": [
+        "https://github.com/lingion/sleepy/blob/main/app/src/main/java/com/lingion/sleepy/data/jw/JwWhutParser.kt",
+        "https://github.com/lingion/sleepy/blob/main/docs/schools-list.md"
+      ],
+      "limitations": [
+        "协议结构来自公开 MIT/行为研究资料，尚未完成本项目的真实学生账号端到端验收。",
+        "学期第一周周一通常需要用户确认。",
+        "调课数据仅在教务接口明确返回时使用，缺失时不会自动推断。"
+      ]
+    }
+  ]
+}

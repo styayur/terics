@@ -4,14 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "terics"
-version = "0.1.0"
+version = "0.5.0rc1"
 description = "Local Chinese university timetable to ICS converter with a Tkinter GUI"
+readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "styayur" }]
 dependencies = [
   "beautifulsoup4>=4.13,<5",
-  "openpyxl>=3.1,<4"
+  "openpyxl>=3.1,<4",
+  "playwright>=1.55,<2",
+  "google-auth-oauthlib>=1.2,<2",
+  "google-api-python-client>=2.180,<3",
+  "keyring>=25,<28"
 ]
 
 [project.optional-dependencies]
@@ -27,6 +32,9 @@ terics = "terics.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["terics*"]
+
+[tool.setuptools.package-data]
+terics = ["assets/*.js", "assets/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -171,14 +171,10 @@ export async function buildEvents(config: SemesterConfig, rawCourses: RawCourse[
       const end = endPeriodTime.end;
       const startDateTime = compactLocalDateTime(date, start);
       const endDateTime = compactLocalDateTime(date, end);
-      const uidKey = [
-        course.name,
-        course.teacher,
-        course.location,
-        date,
-        course.startPeriod,
-        course.endPeriod,
-      ].join("\u001f");
+      const courseAnchor =
+        course.sourceRef?.trim() ||
+        [course.weekday, course.startPeriod, course.endPeriod, course.weeks.join(",")].join("|");
+      const uidKey = [courseAnchor, date, course.startPeriod, course.endPeriod].join("\u001f");
       const uid = await stableUid(uidKey);
       if (seenUids.has(uid)) continue;
       seenUids.add(uid);

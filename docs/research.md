@@ -44,10 +44,47 @@ GitHub Star 总数：408（通过 GitHub API 分页读取）
 
 ## 4. 调研对应的支持范围
 
-v0.1.0 支持三类 Adapter：
+v0.1.0 文件导入支持三类 Adapter；v0.5.0 在此基础上增加 SIS Connector、schema 2.0 和扩展入口：
 
 - **CSV**：长表课程清单，适合从任意教务系统整理后导入。
 - **HTML**：青果列表式表格与通用“节次 × 星期”网格；支持 HTML 内容伪装为 `.xls`。
 - **XLSX**：周网格与课程长表两种布局；不支持 OLE 二进制 `.xls`。
 
 这只是格式级适配，不代表已验证全国所有教务系统变体。使用方法与已知边界见 `docs/formats.md`。
+
+
+## 5. v0.5.0 追加协议与官方文档审计（2026-11-05）
+
+### 新增参考结论
+
+- 武汉理工大学入口在审计时返回 302 到 `zhlgd.whut.edu.cn` 统一认证。入口使用 `jwapp/sys/homeapp/index.do?forceCas=1`，不在未登录状态下探测个人课表接口。
+- WHUT 学生课表公开行为研究指向金智 `wdkbby` 微应用；本项目独立实现以下流程：currentUser/学期、节次映射、`cxxszhxqkb.do` 主通道、旧 `cxxskcb.do` 兜底。
+- `SKZC` 按 30 位周次 bitmap 解析；WHUT DM 映射采用公开研究的 1..5、8..12、14..16 → 物理 1..13 事实表，未知 DM 不丢弃。
+- 上述接口只在用户手动登录后由页面上下文执行，且全部为只读请求。
+- 未取得真实学生账号，因此 WHUT 仍为 Experimental；未伪造 Verified。
+
+### 官方技术文档
+
+- Chrome `scripting` API：<https://developer.chrome.com/docs/extensions/reference/api/scripting>
+- Chrome 权限声明：<https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions>
+- Chrome activeTab：<https://developer.chrome.com/docs/extensions/develop/concepts/activeTab>
+- Google Identity Services token model：<https://developers.google.com/identity/oauth2/web/guides/use-token-model>
+- Google Calendar OAuth scopes：<https://developers.google.com/workspace/calendar/api/auth>
+- Google Calendar extended properties：<https://developers.google.com/workspace/calendar/api/guides/extended-properties>
+- Google Calendar events.list：<https://developers.google.com/workspace/calendar/api/v3/reference/events/list>
+- Google OAuth for desktop apps：<https://developers.google.com/identity/protocols/oauth2/native-app>
+- Playwright Python persistent context：<https://playwright.dev/python/docs/api/class-browsertype>
+
+### v0.5.0 设计选择
+
+- Extension 使用 `activeTab` + 用户点击时 `scripting.executeScript`，不申请固定 host permissions 或 `<all_urls>`。
+- Python 使用独立 Playwright persistent profile，不复制日常浏览器目录；清除按钮删除专用 profile。
+- Web token 模型只在内存保存 access token；无 client ID 时直接禁用同步 UI。
+- Desktop 使用 installed-app loopback OAuth 与自动 PKCE；refresh token 存储到 OS keyring。
+- Calendar sync 使用 `calendar.app.created` + 只读 calendar list scope，事件以 private extended properties 标记并限制删除。
+
+### 真实环境阻塞
+
+- WHUT 及参考协议学校的真实登录验收需要用户现场完成统一认证。Agent 不收集密码、MFA 或 Cookie。
+- Google Calendar 真实同步需要用户授权的 OAuth Desktop/Web client 与独立测试日历。
+- 因此发布等级为 `v0.5.0-rc.1`，符合“最低发布门槛未满足时先发 RC”的约束。
