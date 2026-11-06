@@ -1,83 +1,95 @@
 # Browser Extension
 
-The extension is a Manifest V3 Chromium extension for Chrome and Microsoft Edge. It is intentionally narrow:
+## Purpose
 
-- `activeTab` access only when the user opens the popup and presses extract;
-- `scripting` to inject the bundled local Connector runtime;
-- `storage` for the last local extraction;
-- no fixed `host_permissions`;
-- no `<all_urls>`;
-- no remote JavaScript;
-- no Cookie database access;
-- no background polling.
+The Chrome/Edge Manifest V3 extension reads a timetable from an already-authenticated school page after explicit user action. It never logs in, bypasses MFA, or reads the browser Cookie database.
 
-## Build
+## Permissions
+
+```json
+{
+  "permissions": ["activeTab", "scripting", "storage"],
+  "externally_connectable": {
+    "matches": ["https://styayur.github.io/terics/*"]
+  }
+}
+```
+
+There are no `host_permissions`, no `<all_urls>`, no cookie permission and no remote code. The verifier rejects unexpected permissions and remote script loading.
+
+## Install from Release
+
+1. Download `terics-extension-v0.6.0-rc.1.zip`.
+2. Extract it.
+3. Open `edge://extensions` or `chrome://extensions`.
+4. Enable Developer mode.
+5. Choose **Load unpacked** and select the extracted directory.
+6. Confirm the permissions above.
+
+## User flow
+
+1. Open the authenticated timetable page.
+2. Click the terics toolbar action.
+3. Review page match, adapter, term and period schedule.
+4. Click **检测并提取当前课表**.
+5. Review counts, validation and warnings.
+6. Export ICS/JSON or open the Web preview.
+
+The extension does not claim extraction success merely because the HTTP status is 200. Detection, schema validation, completeness checks and explicit warning counts are shown.
+
+## Extension → Web handoff
+
+The Web URL is opaque:
+
+```text
+#terics-handoff=1&requestId=…&nonce=…&extensionId=…&targetOrigin=…&expiresAt=…
+```
+
+It never contains timetable payload, Cookie or token.
+
+1. Extension computes canonical payload JSON, byte size and SHA-256.
+2. It creates a one-time record with protocol version, extension ID, connector ID, schema 2.0, timestamps, TTL and hash.
+3. Record is stored under `tericsPendingHandoff` in `chrome.storage.local`.
+4. Extension opens the Pages URL with only opaque parameters.
+5. Web calls `chrome.runtime.sendMessage(extensionId, claim)`.
+6. Service worker verifies sender origin/path and extension ID.
+7. It checks requestId, nonce, expiry, size, hash, Schema and consumed state.
+8. The record is marked consumed before returning the payload.
+9. Web validates the envelope again and clears the URL fragment.
+
+Replay protections:
+
+- one-time nonce
+- 5-minute TTL and 10-minute absolute window
+- consumed flag
+- in-flight request set
+- Web sessionStorage replay key
+- sender origin/path allow-list
+- extension ID identity check
+- payload SHA-256 and size
+- Schema 2.0 validation
+
+Payload limit: **2 MiB**. If the timetable is larger, the popup downloads `.terics.json` instead of producing a long URL.
+
+## Build and verify
 
 ```powershell
-npm ci
-npm run build:connectors
 npm run build:extension
 npm run package:extension
 npm run verify:extension
-```
-
-Artifact:
-
-```text
-release/terics-extension-v0.5.0-rc.2.zip
-```
-
-Unpacked development directory: `extension-dist/`.
-
-## Install unpacked
-
-### Chrome
-
-1. Open `chrome://extensions`.
-2. Enable Developer mode.
-3. Click **Load unpacked**.
-4. Select `extension-dist/`.
-
-### Microsoft Edge
-
-1. Open `edge://extensions`.
-2. Enable Developer mode.
-3. Click **Load unpacked**.
-4. Select `extension-dist/`.
-
-## Use
-
-1. Log in manually to the school SIS in the current tab.
-2. Open the terics extension.
-3. Confirm the first teaching Monday, term name, and week count.
-4. Select auto detection or a preferred adapter.
-5. Click **检测并提取当前课表**.
-6. Review the teaching-week ruler, compact agenda, conflicts and validation warnings.
-7. Download `.terics.json`, download ICS, or open the Web app via a URL fragment.
-
-Opening the Web app through a fragment transfers data within the browser URL. Fragments are not sent to GitHub Pages in HTTP requests. Very large schedules should use the JSON download instead.
-
-## Verification
-
-The v0.5.0-rc.2 package was loaded as an unpacked extension in Microsoft Edge with Playwright. The service worker registered, the popup loaded, a sanitized stored timetable rendered the teaching-week ruler and agenda, and the effective permissions were:
-
-```text
-activeTab, scripting, storage
-```
-
-Reproduce on Windows with:
-
-```powershell
-npm run build:connectors
-npm run build:extension
 npm run test:extension-install:edge
 ```
 
-The package verifier checks that the ZIP contains `manifest.json`, popup, content runtime and service worker, and rejects fixed host permissions, `all_urls`, dynamic code evaluation, and remote script loading.
+The Edge smoke test loads the unpacked extension, checks the popup and permissions, creates a pending handoff, verifies that the Web URL contains no payload, claims it from a page whose origin matches `externally_connectable`, and confirms the second claim is rejected as replay.
 
-## Limitations
+## Current evidence
 
-- Chrome Web Store publication is not part of this release.
-- Extraction is only as complete as the active school variant. WHUT is the only live-verified school adapter in this release.
-- Future WHUT API changes require revalidation; other Wisedu schools remain Experimental.
-- The extension cannot bypass login, MFA or CAPTCHA.
+- Manifest V3 service worker registers in Edge.
+- Popup renders a sanitized fixture.
+- Effective permissions are exactly `activeTab`, `scripting`, `storage`.
+- Handoff creation, external claim and replay rejection have local real-browser smoke coverage.
+- Real WHUT extraction in the new v0.6 session remains blocked by the absence of a user-authenticated school session.
+
+## Store distribution
+
+Chrome Web Store/Edge Add-ons publication is not included. The release artifact is an unpacked extension ZIP, not a store-reviewed package.

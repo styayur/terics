@@ -1,5 +1,7 @@
 # WHUT Live Acceptance — 2026-11-06
 
+> v0.6 status: the browser session available during v0.6 construction was on the unified logout page. The evidence below is the accepted v0.5.0-rc.2 baseline and was not re-run for `v0.6.0-rc.1`. The Verified label remains limited to the exact term/layout described here.
+
 ## Scope
 
 - Institution: Wuhan University of Technology

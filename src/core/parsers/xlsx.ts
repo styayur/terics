@@ -4,6 +4,7 @@ import type { ParseIssue, ParseResult, RawCourse } from "../types";
 import { FORMAT_LABELS } from "../types";
 import { parseGridMatrix } from "./cell";
 import { dedupeCourses, findTabularHeader, parseTabularRows } from "./tabular";
+import { validateXlsxWorksheetShape, validateXlsxZip } from "./xlsx-security";
 
 interface SheetCandidate {
   sheetName: string;
@@ -38,6 +39,7 @@ function chooseCandidate(sheetName: string, matrix: unknown[][]): SheetCandidate
 
 export async function parseXlsx(bytes: Uint8Array, fileName: string): Promise<ParseResult> {
   if (bytes.byteLength === 0) throw new TericsParseError("XLSX 文件为空");
+  validateXlsxZip(bytes);
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 
   let sheets: Awaited<ReturnType<typeof readXlsxFile>>;
@@ -51,6 +53,7 @@ export async function parseXlsx(bytes: Uint8Array, fileName: string): Promise<Pa
   if (!Array.isArray(sheets) || sheets.length === 0) {
     throw new TericsParseError("XLSX 文件中没有工作表");
   }
+  validateXlsxWorksheetShape(sheets as Array<{ sheet: string; data: unknown[][] }>);
 
   const issues: ParseIssue[] = [];
   const selectedSheets: SheetCandidate[] = [];

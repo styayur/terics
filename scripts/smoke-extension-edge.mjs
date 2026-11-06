@@ -32,10 +32,54 @@ const agendaCount = await page.locator("#week-agenda .agenda-item").count();
 if (weekCount === 0) throw new Error("week ruler did not render");
 if (agendaCount === 0) throw new Error("week agenda did not render");
 mkdirSync("test-results", { recursive: true });
-const screenshot = resolve("test-results/extension-popup-v0.5.0-rc.2.png");
+const screenshot = resolve("test-results/extension-popup-v0.6.0-rc.1.png");
 await page.screenshot({ path: screenshot, fullPage: true });
-const boardScreenshot = resolve("test-results/extension-week-board-v0.5.0-rc.2.png");
+const boardScreenshot = resolve("test-results/extension-week-board-v0.6.0-rc.1.png");
 await page.locator(".week-board").screenshot({ path: boardScreenshot });
+const webPagePromise = context.waitForEvent("page");
+await page.locator("#web-button").click();
+const webPage = await webPagePromise;
+const webUrl = webPage.url();
+if (!webUrl.includes("#terics-handoff=1")) throw new Error("Web handoff URL is missing the opaque protocol marker");
+if (webUrl.includes("payload") || webUrl.includes("terics-data=")) throw new Error("Web handoff URL leaked timetable payload");
+const pending = await page.evaluate(async () => {
+  const result = await chrome.storage.local.get("tericsPendingHandoff");
+  const record = result.tericsPendingHandoff;
+  return record ? { consumed: record.consumed, requestId: record.envelope?.requestId, nonce: record.envelope?.nonce } : null;
+});
+if (!pending || pending.consumed !== false) throw new Error("pending handoff was not stored");
+await webPage.close();
+
+const params = new URLSearchParams(new URL(webUrl).hash.slice(1));
+const claimMessage = {
+  type: "terics.handoff.claim",
+  protocolVersion: Number(params.get("terics-handoff")),
+  requestId: params.get("requestId"),
+  nonce: params.get("nonce"),
+  targetOrigin: params.get("targetOrigin"),
+};
+const claimHtml = `<!doctype html><meta charset="utf-8"><div id="result">pending</div><script>
+const message = ${JSON.stringify(claimMessage)};
+function claim() {
+  return new Promise((resolve) => chrome.runtime.sendMessage(${JSON.stringify(extensionId)}, message, (response) => resolve(response)));
+}
+(async () => {
+  const first = await claim();
+  const second = await claim();
+  document.querySelector('#result').textContent = JSON.stringify({ first, second });
+})();
+</script>`;
+await context.route("https://styayur.github.io/terics/handoff-smoke.html", (route) =>
+  route.fulfill({ status: 200, contentType: "text/html", body: claimHtml }),
+);
+const claimPage = await context.newPage();
+await claimPage.goto("https://styayur.github.io/terics/handoff-smoke.html");
+await claimPage.waitForFunction(() => document.querySelector("#result")?.textContent !== "pending", null, { timeout: 15_000 });
+const claimResult = await claimPage.locator("#result").textContent();
+const parsedClaim = JSON.parse(claimResult ?? "{}");
+if (parsedClaim.first?.ok !== true) throw new Error(`external handoff claim failed: ${claimResult}`);
+if (parsedClaim.second?.code !== "replay") throw new Error(`handoff replay was not rejected: ${claimResult}`);
+await claimPage.close();
 console.log(
   JSON.stringify(
     {
@@ -46,6 +90,9 @@ console.log(
       worker: worker.url(),
       weekCount,
       agendaCount,
+      handoffUrlOpaque: true,
+      externalClaim: parsedClaim.first.ok,
+      replayRejected: parsedClaim.second.code === "replay",
       screenshot,
       boardScreenshot,
     },

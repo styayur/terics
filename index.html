@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#111410" />
     <meta
       name="description"
-      content="terics 在浏览器本地把高校课表 HTML、CSV、XLSX 转换为 Google Calendar 兼容的 ICS 文件，不上传课表。"
+      content="terics 在浏览器本地识别高校教务网址或课表 HTML、CSV、XLSX，生成 Google Calendar 兼容 ICS，不上传课表。"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <title>terics — 课表转 ICS</title>
@@ -27,12 +27,12 @@
           </svg>
         </span>
         <span class="wordmark-text">TERICS</span>
-        <span class="wordmark-version">v0.5.0-rc.2</span>
+        <span class="wordmark-version">v0.6.0-rc.1</span>
       </a>
       <div class="topbar-center">
         <span>UNIVERSITY TIMETABLE → ICALENDAR</span>
         <span class="rule"></span>
-        <span>BUILD RC.2</span>
+        <span>BUILD RC.1</span>
       </div>
       <div class="local-badge" title="文件只在当前浏览器标签页内处理">
         <span class="pulse"></span>
@@ -46,7 +46,7 @@
         <ol class="steps" id="steps">
           <li data-step="select" class="active">
             <span class="step-number">01</span>
-            <span><strong>选择来源</strong><small>文件 / .terics.json / 扩展</small></span>
+            <span><strong>选择来源</strong><small>教务网址 / 文件 / 扩展</small></span>
           </li>
           <li data-step="detect">
             <span class="step-number">02</span>
@@ -68,7 +68,7 @@
 
         <div class="rail-block privacy-block">
           <div class="block-label">PRIVACY CONTROL</div>
-          <p>课表文件由浏览器 JavaScript 在本地解析。没有后端、没有账号、没有 Cookie、没有上传请求。</p>
+          <p>网址只在本地识别，课表文件由浏览器 JavaScript 在本地解析。没有后端、没有 Cookie、没有上传请求。</p>
           <div class="privacy-meter">
             <span>LOCAL ONLY</span>
             <span class="meter-track"><i></i></span>
@@ -98,11 +98,56 @@
           <div class="panel-heading">
             <div>
               <div class="eyebrow">01 / INGEST</div>
-              <h1 id="ingest-title">把教务课表变成日历事件</h1>
+              <h1 id="ingest-title">Bring your timetable.</h1>
             </div>
             <div class="status-chip idle" id="parse-status" aria-live="polite">
               <span class="status-dot"></span>
-              <span id="parse-status-text">等待文件</span>
+              <span id="parse-status-text">等待网址或文件</span>
+            </div>
+          </div>
+
+          <div class="url-intake" id="url-dropzone" tabindex="0" role="region" aria-labelledby="url-intake-title">
+            <div class="url-intake-head">
+              <div>
+                <div class="eyebrow">URL-FIRST / LOCAL RESOLVER</div>
+                <h2 id="url-intake-title">Drop your university portal URL.</h2>
+                <p>拖入、粘贴或输入已登录的教务系统网址。terics 只做学校与 Connector 识别，不向目标网址发送后台请求。</p>
+              </div>
+              <span class="url-mode-note">ZERO BACKEND<br />NO URL UPLOAD</span>
+            </div>
+            <form class="url-form" id="url-form" novalidate>
+              <label class="field wide" for="url-input">
+                <span>教务系统网址</span>
+                <div class="url-input-row">
+                  <input id="url-input" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://jwxt.whut.edu.cn/jwapp/…" />
+                  <button type="submit" class="primary" id="url-submit">识别学校</button>
+                </div>
+              </label>
+            </form>
+            <div class="url-helper">
+              <span>支持 <code>text/uri-list</code>、<code>text/plain</code>、<code>text/html</code> 拖拽；HTML 只提取链接，不执行。</span>
+              <span id="url-bridge-state">扩展桥接：等待检测</span>
+            </div>
+            <div class="url-result" id="url-result" hidden aria-live="polite">
+              <div class="url-result-head">
+                <div>
+                  <span class="readout-label">RESOLUTION</span>
+                  <strong id="url-result-school">—</strong>
+                </div>
+                <span class="status-chip" id="url-result-status">UNKNOWN</span>
+              </div>
+              <div class="url-result-grid">
+                <div><span>VENDOR</span><strong id="url-result-vendor">—</strong></div>
+                <div><span>CONNECTOR</span><strong id="url-result-connector">—</strong></div>
+                <div><span>CONFIDENCE</span><strong id="url-result-confidence">—</strong></div>
+                <div><span>METHOD</span><strong id="url-result-method">—</strong></div>
+              </div>
+              <p class="url-next-action" id="url-next-action">—</p>
+              <ul class="url-evidence" id="url-evidence"></ul>
+              <div class="url-result-actions">
+                <button type="button" class="primary" id="url-open">打开教务系统</button>
+                <span>登录后点击 terics 扩展提取；Web 不读取 Cookie 或密码。</span>
+              </div>
             </div>
           </div>
 
@@ -122,8 +167,8 @@
               </svg>
             </div>
             <div class="dropzone-copy">
-              <strong>拖入课表文件，或点击选择</strong>
-              <span>自动识别内容，不依赖扩展名 · 最大 10 MiB</span>
+              <strong>或者拖入课表文件，点击选择</strong>
+              <span>保留文件导入回退，自动识别内容，不依赖扩展名 · 最大 10 MiB</span>
             </div>
             <div class="dropzone-tags">
               <span>HTML</span><span>HTM</span><span>CSV</span><span>XLSX</span><span>HTML 伪装 .XLS</span>
@@ -131,7 +176,7 @@
           </div>
 
           <div class="sample-strip">
-            <span class="sample-label">载入测试样本</span>
+            <span class="sample-label">文件回退 / 载入测试样本</span>
             <button type="button" class="sample-button" data-sample="csv">CSV / 结构化清单</button>
             <button type="button" class="sample-button" data-sample="html">HTML / 青果列表</button>
             <button type="button" class="sample-button" data-sample="xlsx">XLSX / 周网格</button>
@@ -293,9 +338,53 @@
               <div><dt>教师</dt><dd id="course-detail-teacher">—</dd></div>
               <div><dt>教学周</dt><dd id="course-detail-weeks">—</dd></div>
               <div><dt>来源</dt><dd id="course-detail-source">—</dd></div>
+              <div><dt>课程 ID</dt><dd id="course-detail-id">—</dd></div>
+              <div><dt>学期实例</dt><dd id="course-detail-occurrences">—</dd></div>
             </dl>
             <p class="detail-note" id="course-detail-note"></p>
+            <div class="detail-actions">
+              <button type="button" class="text-button" id="remove-occurrence" disabled title="单次课程移除将在后续版本开放">Remove this occurrence</button>
+              <button type="button" class="danger-button" id="remove-course">Remove this course for the semester</button>
+            </div>
           </article>
+
+          <section class="course-removal" id="course-removal" tabindex="-1" hidden aria-labelledby="course-removal-title" aria-live="polite">
+            <div class="removal-heading">
+              <div>
+                <div class="eyebrow">DESTRUCTIVE / COURSE IDENTITY</div>
+                <h3 id="course-removal-title">Remove course for the semester</h3>
+              </div>
+              <button type="button" class="detail-close" id="course-removal-close" aria-label="关闭课程移除面板">×</button>
+            </div>
+            <p class="removal-warning">只按精确 <code>courseId</code> 删除；同名课程、共享教师和普通 Google 事件不会被标题匹配。Google Calendar 删除通常不能由 terics 自动恢复，建议先下载 ICS 备份。</p>
+            <dl class="removal-ledger">
+              <div><dt>课程</dt><dd id="removal-course">—</dd></div>
+              <div><dt>学期</dt><dd id="removal-term">—</dd></div>
+              <div><dt>教师 / 教室</dt><dd id="removal-context">—</dd></div>
+              <div><dt>周次</dt><dd id="removal-weeks">—</dd></div>
+              <div><dt>MEETINGS</dt><dd id="removal-meetings">0</dd></div>
+              <div><dt>OCCURRENCES</dt><dd id="removal-occurrences">0</dd></div>
+              <div><dt>OVERRIDES</dt><dd id="removal-overrides">0</dd></div>
+              <div><dt>COURSE ID</dt><dd id="removal-course-id">—</dd></div>
+            </dl>
+            <fieldset class="removal-scope">
+              <legend>删除范围（默认仅本地文件）</legend>
+              <label><input type="radio" name="removal-scope" value="local" checked /><span><strong>仅当前文件</strong><small>生成新的 .terics.json，不覆盖原始文件</small></span></label>
+              <label><input type="radio" name="removal-scope" value="calendar" /><span><strong>仅 Google Calendar</strong><small>只删除所选日历中精确匹配的托管事件</small></span></label>
+              <label><input type="radio" name="removal-scope" value="both" /><span><strong>文件和 Calendar</strong><small>分别执行并分别报告部分成功</small></span></label>
+            </fieldset>
+            <div class="removal-calendar-target" id="removal-calendar-target">Calendar：未连接或未选择目标日历</div>
+            <label class="confirm-conflict removal-confirm">
+              <input id="removal-confirm" type="checkbox" />
+              <span>我已核对 courseId、学期和删除范围，并理解 Calendar 删除不可自动恢复</span>
+            </label>
+            <div class="removal-actions">
+              <button type="button" class="text-button" id="removal-backup">下载完整 ICS 备份</button>
+              <button type="button" class="danger-button" id="removal-submit" disabled>确认移除课程</button>
+              <button type="button" class="text-button" id="removal-cancel">取消</button>
+            </div>
+            <div class="removal-report" id="removal-report" hidden></div>
+          </section>
 
           <div class="preview-list-section" id="preview-list-section" hidden>
             <div class="list-section-heading">
@@ -341,21 +430,24 @@
           </div>
           <div class="google-unavailable" id="google-unavailable">
             <strong>直接同步未启用</strong>
-            <p>GitHub Pages 构建未配置 <code>VITE_GOOGLE_CLIENT_ID</code>。离线 ICS 导出仍完整可用；不会通过不安全代理绕过 OAuth。</p>
+            <p>GitHub Pages 构建未配置 <code>VITE_GOOGLE_CLIENT_ID</code>。离线 ICS 导出仍完整可用；静态 SPA 使用 Google Identity Services Token Model，不会通过不安全代理或 Client Secret 绕过 OAuth。</p>
           </div>
           <div id="google-configured" hidden>
             <div class="google-toolbar">
               <button type="button" class="text-button" id="google-connect">连接 Google 测试账户</button>
               <button type="button" class="text-button" id="google-create-calendar" disabled>创建 terics 日历</button>
-              <select id="google-calendar-select" aria-label="terics Google 日历"><option value="">先连接账户</option></select>
+              <select id="google-calendar-select" aria-label="Google 目标日历"><option value="">先连接账户</option></select>
+              <input id="google-calendar-id" type="text" spellcheck="false" autocomplete="off" aria-label="自定义 calendarId" placeholder="或输入 calendarId（如 primary）" />
               <button type="button" class="text-button" id="google-plan-sync" disabled>预览增量同步</button>
             </div>
-            <p class="google-note">仅处理带有 <code>terics_source=terics</code> 私有扩展属性的事件；默认使用独立 terics 日历。不会修改其他应用事件。</p>
+            <div class="google-target-summary" id="google-target-summary">目标日历：未选择</div>
+            <p class="google-note">同步前必须确认目标日历。仅处理带 <code>tericsManaged=true</code> 或旧版 <code>terics_source=terics</code> 私有属性的事件；不会修改其他应用事件，也不会覆盖检测到手动修改的 terics 字段。</p>
             <div class="google-plan" id="google-plan" hidden>
               <div class="preview-summary google-metrics">
                 <div><span>CREATE</span><strong id="google-create-count">0</strong></div>
                 <div><span>UPDATE</span><strong id="google-update-count">0</strong></div>
                 <div><span>SKIP</span><strong id="google-skip-count">0</strong></div>
+                <div><span>CONFLICTS</span><strong id="google-conflict-count">0</strong></div>
                 <div><span>DELETE CANDIDATES</span><strong id="google-delete-count">0</strong></div>
               </div>
               <div class="issue-box google-warnings" id="google-warning-box" hidden><ul id="google-warning-list"></ul></div>
@@ -408,7 +500,7 @@
           </div>
 
           <footer class="export-footer">
-            <span>TERICS 0.5.0-rc.2</span>
+            <span>TERICS 0.6.0-rc.1</span>
             <span>MIT LICENSE</span>
             <a href="https://github.com/styayur/terics" target="_blank" rel="noreferrer">SOURCE ↗</a>
           </footer>

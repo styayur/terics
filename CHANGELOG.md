@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.6.0-rc.1 — 2026-11-06
+
+URL-first integration, exact whole-course removal, UID migration and resource-hardening release candidate. Stable release is intentionally blocked pending real WHUT and Google Calendar account UI acceptance.
+
+### Added
+
+- URL Drop Zone with `text/uri-list`, `text/plain` and safe `text/html` link extraction.
+- Local URL validator and School Resolver with IDN normalization, private-network rejection, redirect warnings and exact-domain matching.
+- Connector Registry declarations for all six adapters, including WHUT priority over generic Wisedu.
+- Opaque extension-to-Web handoff using local extension storage, one-time nonce, request ID, TTL, Schema 2.0, payload size and SHA-256 validation.
+- `externally_connectable` restricted to `https://styayur.github.io/terics/*`.
+- Exact whole-course removal for `.terics.json`, ICS and Google Calendar, with same-title/shared-teacher tests, course/override cleanup, empty-result protection and partial failure reporting.
+- UID migration preview/apply module and `npm run migrate:uid` CLI with dry-run and explicit confirmation.
+- XLSX ZIP/XML resource guards in TypeScript and Python: entry count, expanded size, compression ratio, ZIP Slip, duplicates, encryption, sheet/row/column and XML depth/DTD checks.
+- Google Calendar camelCase identity properties with legacy snake_case compatibility, deterministic event IDs, rendered-field hashes, duplicate detection and manual-edit conflict protection.
+- Target calendar display/selection for primary, existing or custom `calendarId`.
+- User guide, UID migration guide and v0.6 legacy-debt gate report.
+
+### Changed
+
+- Web home is now URL-first while retaining all file import paths.
+- Google Web scopes now include `calendar.events` for primary/existing calendar support while continuing to use GIS Token Model on the static SPA.
+- Python installed-app OAuth uses the same Calendar scopes and updated managed-event property model.
+- GitHub Actions moved to Node 24-era majors: checkout v7, setup-node v7, setup-python v7, configure-pages v6, upload-pages-artifact v5 and deploy-pages v5.
+- Extension numeric version is `0.6.0`; `version_name` and package version are `0.6.0-rc.1`.
+
+### Verification
+
+- TypeScript unit/integration tests include resolver, handoff, removal, UID migration, XLSX security and Google planner cases.
+- Python tests include XLSX resource guards, Google identity/legacy properties and exact course removal.
+- Playwright E2E covers URL-first UI, HTML drag safety, opaque handoff, file fallback and whole-course local removal.
+- Windows Edge smoke creates a pending handoff, claims it through `externally_connectable`, and rejects replay.
+
+### Known limitations
+
+- Real WHUT login regression for v0.6, real Google OAuth, full semester Calendar write, repeat sync, live Update/Skip, whole-course Calendar deletion and Calendar UI verification remain blocked by missing user authorization/account access.
+- Non-empty `notArrangeList`/`practiceList` real-school semantics remain unverified; synthetic fixture behavior is tested.
+- No dedicated WHUT adjustment endpoint is known.
+- No signed EXE or extension-store package is provided.
+- The release is a candidate, not Stable.
+
 ## v0.5.0-rc.2 — 2026-11-06
 
 Second release candidate. WHUT 2026-2027-1 live acceptance passed; Google Calendar account-level acceptance remains outstanding.

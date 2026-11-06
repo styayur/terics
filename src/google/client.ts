@@ -3,6 +3,16 @@ import type { GoogleCalendarClient, GoogleCalendarEvent, GoogleCalendarInfo } fr
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 const MAX_RETRIES = 3;
 
+export class GoogleCalendarApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GoogleCalendarApiError";
+  }
+}
+
 function encode(value: string): string {
   return encodeURIComponent(value);
 }
@@ -31,7 +41,7 @@ export class GoogleCalendarRestClient implements GoogleCalendarClient {
     }
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      throw new Error(`Google Calendar API HTTP ${response.status}${text ? `：${text.slice(0, 300)}` : ""}`);
+      throw new GoogleCalendarApiError(response.status, `Google Calendar API HTTP ${response.status}${text ? `：${text.slice(0, 300)}` : ""}`);
     }
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
@@ -61,27 +71,36 @@ export class GoogleCalendarRestClient implements GoogleCalendarClient {
   }
 
   async listManagedEvents(calendarId: string, termId: string): Promise<GoogleCalendarEvent[]> {
-    const events: GoogleCalendarEvent[] = [];
-    let pageToken: string | undefined;
-    do {
-      const query = new URLSearchParams({
-        maxResults: "2500",
-        singleEvents: "true",
-        showDeleted: "false",
-        privateExtendedProperty: "terics_source=terics",
-      });
-      query.append("privateExtendedProperty", `terics_term_id=${termId}`);
-      if (pageToken) query.set("pageToken", pageToken);
-      const page = await this.request<{
-        items?: GoogleCalendarEvent[];
-        nextPageToken?: string;
-      }>(`/calendars/${encode(calendarId)}/events?${query.toString()}`);
-      events.push(...(page.items ?? []));
-      pageToken = page.nextPageToken;
-    } while (pageToken);
-    return events.filter((event) => {
+    const filters = [
+      ["tericsManaged=true", `tericsTermId=${termId}`],
+      ["terics_source=terics", `terics_term_id=${termId}`],
+    ] as const;
+    const byId = new Map<string, GoogleCalendarEvent>();
+    for (const privateFilters of filters) {
+      let pageToken: string | undefined;
+      do {
+        const query = new URLSearchParams({
+          maxResults: "2500",
+          singleEvents: "true",
+          showDeleted: "false",
+        });
+        for (const filter of privateFilters) query.append("privateExtendedProperty", filter);
+        if (pageToken) query.set("pageToken", pageToken);
+        const page = await this.request<{
+          items?: GoogleCalendarEvent[];
+          nextPageToken?: string;
+        }>(`/calendars/${encode(calendarId)}/events?${query.toString()}`);
+        for (const event of page.items ?? []) {
+          if (event.id) byId.set(event.id, event);
+        }
+        pageToken = page.nextPageToken;
+      } while (pageToken);
+    }
+    return [...byId.values()].filter((event) => {
       const properties = event.extendedProperties?.private;
-      return properties?.terics_source === "terics" && properties.terics_term_id === termId;
+      const managed = properties?.tericsManaged === "true" || properties?.terics_source === "terics";
+      const eventTerm = properties?.tericsTermId ?? properties?.terics_term_id;
+      return managed && eventTerm === termId;
     });
   }
 

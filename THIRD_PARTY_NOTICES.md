@@ -8,6 +8,7 @@ terics is MIT licensed. This file records third-party dependencies and redistrib
 |---|---|---|
 | `papaparse` | MIT | CSV/TSV parsing |
 | `read-excel-file` | MIT | XLSX parsing |
+| `fflate` | MIT | Bounded streaming DEFLATE validation for XLSX security preflight |
 
 ## Runtime dependencies (Python)
 

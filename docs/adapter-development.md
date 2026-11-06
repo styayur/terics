@@ -96,7 +96,7 @@ Update:
 - `docs/connectors.md`
 - `docs/supported-schools.md`
 - `docs/support-matrix.md`
-- `docs/release-notes-v0.5.0-rc.2.md` or the next release notes
+- `docs/release-notes-v0.6.0-rc.1.md`
 - `THIRD_PARTY_NOTICES.md` when applicable
 
 ## 9. Status upgrade

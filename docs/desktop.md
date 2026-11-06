@@ -1,6 +1,6 @@
 # Python Desktop
 
-`main.pyw` remains the Windows entry point. v0.5.0 adds a Playwright-backed SIS browser and schema 2.0 support while preserving all v0.1.0 file import and ICS export paths.
+`main.pyw` remains the Windows entry point. v0.6.0-rc.1 preserves the Playwright-backed SIS browser, schema 2.0, file import and ICS export paths, and aligns Google Calendar managed-event properties with the Web implementation.
 
 ## Install
 
@@ -54,9 +54,9 @@ or:
 $env:TERICS_GOOGLE_CLIENT_CONFIG = "C:\path\to\desktop-oauth-client.json"
 ```
 
-Refresh tokens are stored through the OS keyring, not a plaintext config file. Use **清除 Google 授权** to remove them. No OAuth client ID or token is shipped in this repository or release.
+Refresh tokens are stored through the OS keyring, not a plaintext config file. Use **清除 Google 授权** to remove them. No OAuth client ID or token is shipped in this repository or release. The target calendar picker includes primary, existing writer calendars and terics-created calendars, and shows the selected calendar before preview.
 
-Real Google Calendar sync is not verified because no authorized client/account was available in the release environment. The sync planner and deletion confirmation logic are covered by mocks.
+Real Google Calendar sync is not verified because no authorized client/account was available in the release environment. The sync planner, legacy/camelCase events, manual-edit conflict protection and exact course removal are unit-tested, but do not replace real Calendar UI acceptance.
 
 ## CLI
 

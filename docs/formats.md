@@ -1,6 +1,8 @@
 # 支持的输入格式
 
-v0.5.0-rc.2 的文件导入仍按内容识别格式，不依赖扩展名。
+v0.6.0-rc.1 的文件导入仍按内容识别格式，不依赖扩展名。
+
+XLSX 在解析前会检查 ZIP central directory：entry 数、单 entry/总解压大小、压缩率、ZIP Slip、重复 entry、加密标志、工作表数、行列数和 XML 深度/DTD。TypeScript 与 Python 使用相同阈值。
 
 ## 1. CSV / TSV 长表
 

@@ -1,6 +1,6 @@
 # SIS Connectors
 
-terics v0.5.0-rc.2 uses a Connector SDK plus vendor adapters and school profiles. A vendor adapter implements protocol behavior; a school profile supplies the domain, entry URL, platform variant, status and capabilities.
+terics v0.6.0-rc.1 uses a Connector SDK, URL Resolver, Connector Registry and school profiles. A vendor adapter implements protocol behavior; a school profile supplies exact domains, entry URL, platform variant, status and capabilities.
 
 ## Adapter inventory
 
@@ -14,6 +14,16 @@ terics v0.5.0-rc.2 uses a Connector SDK plus vendor adapters and school profiles
 | `generic-dom` | Generic HTML | DOM | Experimental | timetable |
 
 WHUT verification does **not** certify the generic Wisedu adapter or another Wisedu school.
+
+## URL Resolver and Registry
+
+- `src/connectors/resolver/url-validator.ts` validates and normalizes user URLs without network access.
+- `schools.ts` holds exact school-domain evidence.
+- `connector-registry.ts` declares URL rules, page types, permissions, extraction methods, fields, evidence and compatibility.
+- `resolver.ts` prefers exact school profiles, then vendor fingerprints, then an unknown fallback.
+- `drop.ts` accepts `text/uri-list`, `text/plain` and `text/html`; HTML is parsed only for anchor URLs.
+
+Lookalike hosts such as `jwxt.whut.edu.cn.evil.example` are never promoted to WHUT Verified. The dedicated WHUT adapter always wins over generic Wisedu.
 
 ## Wuhan University of Technology
 
@@ -61,6 +71,8 @@ WHUT verification does **not** certify the generic Wisedu adapter or another Wis
 - `arrangedList`: scheduled course meetings; normalized into schema 2.0.
 - `notArrangeList`: accepted response was empty. Non-empty records are preserved as explicit warnings and never silently discarded.
 - `practiceList`: accepted response was empty. Records with complete scheduling fields are normalized; incomplete records produce warnings.
+
+The v0.6 fixture test exercises both non-empty collections: a practice record with complete scheduling fields becomes a `实践课记录` meeting, while an unscheduled record is counted and warned without inventing a weekday or period. This is Fixture-tested, not a new real-school verification.
 
 ## Zhengfang
 

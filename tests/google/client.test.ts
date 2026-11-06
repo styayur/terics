@@ -21,6 +21,8 @@ describe("Google Calendar REST client", () => {
     const events = await client.listManagedEvents("terics-cal", "T1");
     expect(events.map((event) => event.id)).toEqual(["M1", "M2"]);
     expect(calls.some((url) => url.includes("privateExtendedProperty=terics_source%3Dterics"))).toBe(true);
+    expect(calls.some((url) => url.includes("privateExtendedProperty=tericsManaged%3Dtrue"))).toBe(true);
+    expect(calls.some((url) => url.includes("privateExtendedProperty=tericsTermId%3DT1"))).toBe(true);
   });
 
   it("uses PATCH for updates and never returns token in errors", async () => {

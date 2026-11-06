@@ -20,8 +20,9 @@ src/
     generic/            DOM fallback
     registry.ts         Detection and extraction orchestration
     page-runtime.ts     Runtime bundle for Python injection
-  extension/            Pure extension message contract
-  v2/                   Schema 2.0 model, event engine, exchange, ICS
+    resolver/           URL validator, school registry, connector registry, drop parser
+  extension/            Message contract and opaque extension-to-Web handoff
+  v2/                   Schema 2.0 model, event engine, exchange, ICS, removal, UID migration
   google/               Google OAuth, Calendar REST, sync planner
   main.ts               Web application
 python/terics/
@@ -65,11 +66,15 @@ Display title, teacher and room are not UID inputs. Internal duplicate events ar
 
 ## Google Calendar safety
 
-- Minimal scopes: `calendar.app.created` + `calendar.calendarlist.readonly`.
+- Scopes: `calendar.events` + `calendar.app.created` + `calendar.calendarlist.readonly`.
 - Managed events are identified by private extended properties.
 - Other applications’ events are never bulk-cleared.
 - Empty or incomplete data blocks deletion.
 - Two-step UI: preview, then execute; deletion candidates require an additional explicit confirmation.
+- Sync preview supports Create / Update / Skip / Conflict / Delete.
+- camelCase private properties are written alongside legacy snake_case compatibility fields.
+- `tericsRenderedHash` detects manual edits in managed event fields and blocks automatic PATCH.
+- Empty data cannot generate a delete plan.
 - No background sync.
 
 ## Offline guarantee
@@ -98,3 +103,47 @@ ICS generation never requires Google OAuth. Web/Python file parsing and `.terics
 - Cancellation, reschedule, makeup and conflict states use geometry/text in addition to color.
 
 The shared schema remains 2.0. WHUT verification is school- and term-specific; the generic Wisedu adapter remains Experimental.
+
+## v0.6 URL-first additions
+
+### Resolver pipeline
+
+```text
+Dropped/pasted URL
+  → validatePortalUrl
+  → URL normalization and safety warnings
+  → exact school registry match
+  → Connector Registry vendor fingerprint fallback
+  → confidence/status/evidence/nextAction
+  → user opens authenticated portal
+```
+
+The resolver never fetches the input URL. Unknown systems fall back to explicit Generic DOM or file guidance.
+
+### Extension handoff
+
+```text
+Extension extraction
+  → Chrome storage pending record
+  → opaque URL: requestId + nonce + extensionId + targetOrigin + expiresAt
+  → chrome.runtime.sendMessage(extensionId, ...)
+  → external sender origin/path check
+  → request/nonce identity check
+  → TTL + SHA-256 + Schema validation
+  → consumed=true
+  → Web preview
+```
+
+Only `https://styayur.github.io/terics/*` is externally connectable. The URL never carries timetable payload, Cookie or token. Payloads over 2 MiB force JSON download fallback.
+
+### Whole-course removal
+
+- Course identity is exact `courseId`; titles are never deletion identity.
+- JSON removal copies, removes course/overrides, updates validation, and writes a new file.
+- ICS removal matches only `X-TERICS-COURSE-ID`, preserves VTIMEZONE/other UIDs, and rejects empty output.
+- Calendar removal filters by target calendar, term, managed marker and exact courseId.
+- Local and Calendar results are independent and may be partial success.
+
+### XLSX security layer
+
+The ZIP central directory is validated before workbook parsing. TypeScript and Python apply equivalent entry, size, ratio, path, encryption, sheet/row/column and XML-depth quotas.

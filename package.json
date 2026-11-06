@@ -1,6 +1,6 @@
 {
   "name": "terics",
-  "version": "0.5.0-rc.2",
+  "version": "0.6.0-rc.1",
   "private": true,
   "type": "module",
   "description": "Local-first university timetable bridge for Chinese SIS platforms, ICS and Google Calendar",
@@ -33,9 +33,11 @@
     "audit:python-licenses": "python scripts/audit_python_licenses.py",
     "verify:extension": "node scripts/verify-extension-package.mjs",
     "test:extension-install:edge": "node scripts/smoke-extension-edge.mjs",
-    "generate:whut-fixture": "tsx scripts/generate-whut-fixture.ts"
+    "generate:whut-fixture": "tsx scripts/generate-whut-fixture.ts",
+    "migrate:uid": "tsx scripts/migrate-uid.ts"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "papaparse": "^5.7.0",
     "read-excel-file": "^9.3.14"
   },

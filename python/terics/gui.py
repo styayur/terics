@@ -1146,7 +1146,9 @@ class TericsApp:
 
             service = google_build("calendar", "v3", credentials=credentials, cache_discovery=False)
             client = GoogleApiCalendarClient(service)
-            calendars = [item for item in client.list_calendars() if str(item.get("summary", "")).startswith("terics /")]
+            calendars = client.list_calendars()
+            if not any(str(item.get("id", "")) == "primary" for item in calendars):
+                calendars.insert(0, {"id": "primary", "summary": "主日历（primary）"})
             if not calendars:
                 if not messagebox.askyesno(
                     "创建独立 terics 日历",
@@ -1182,6 +1184,7 @@ class TericsApp:
             preview = (
                 f"目标：{selected.get('summary', calendar_id)}\n"
                 f"新建：{len(plan.creates)}\n更新：{len(plan.updates)}\n跳过：{len(plan.skips)}\n"
+                f"冲突：{len(plan.conflicts)}\n"
                 f"删除候选：{len(plan.deletes)}"
             )
             if plan.warnings:
@@ -1210,7 +1213,7 @@ class TericsApp:
             return
         self.google_last_result = (
             f"{date.today().isoformat()} · 新建 {result.created} · 更新 {result.updated} · "
-            f"跳过 {result.skipped} · 删除 {result.deleted}"
+            f"跳过 {result.skipped} · 冲突 {result.conflicted} · 删除 {result.deleted}"
         )
         self.export_state.configure(text=self.google_last_result)
         log_path = Path.home() / ".terics" / "sync-log.jsonl"
@@ -1225,6 +1228,7 @@ class TericsApp:
                         "created": result.created,
                         "updated": result.updated,
                         "skipped": result.skipped,
+                        "conflicted": result.conflicted,
                         "deleted": result.deleted,
                         "errors": result.errors,
                     },

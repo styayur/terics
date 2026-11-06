@@ -18,14 +18,14 @@ jobs:
     env:
       TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -37,6 +37,8 @@ jobs:
       - run: npm run generate:whut-fixture
       - run: npm run check
       - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
       - run: npm run build:extension
       - run: npm run package:extension
       - run: npm run verify:extension
@@ -56,8 +58,10 @@ jobs:
           set -euo pipefail
           ASSET_VERSION="${TAG}"
           mkdir -p release/terics-python-${ASSET_VERSION}
-          cp -a main.pyw requirements.txt requirements-dev.txt README.md CHANGELOG.md LICENSE THIRD_PARTY_NOTICES.md .interface-design python schema spec fixtures docs release/terics-python-${ASSET_VERSION}/
+          cp -a main.pyw requirements.txt requirements-dev.txt .env.example README.md CHANGELOG.md LICENSE THIRD_PARTY_NOTICES.md .interface-design python schema spec fixtures docs release/terics-python-${ASSET_VERSION}/
+          rm -rf release/terics-python-${ASSET_VERSION}/docs/jounal release/terics-python-${ASSET_VERSION}/docs/journal
           find release/terics-python-${ASSET_VERSION} -type d \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache \) -prune -exec rm -rf {} +
+          find release/terics-python-${ASSET_VERSION} -type f \( -name '.env' -o -name '.env.*' \) -delete
           (cd release && zip -qr terics-python-${ASSET_VERSION}.zip terics-python-${ASSET_VERSION})
           (cd dist && zip -qr ../release/terics-web-${ASSET_VERSION}.zip .)
           cd release
