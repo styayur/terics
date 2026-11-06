@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-APP_VERSION = "0.5.0-rc.2"
+APP_VERSION = "0.6.0-rc.1"
 TIMEZONE = "Asia/Shanghai"
 DEFAULT_MAX_WEEK = 30
 

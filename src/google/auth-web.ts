@@ -3,6 +3,7 @@ import { GOOGLE_SCOPES } from "./planner";
 interface TokenResponse {
   access_token?: string;
   expires_in?: number;
+  scope?: string;
   error?: string;
   error_description?: string;
 }
@@ -19,6 +20,7 @@ interface GoogleOAuth2 {
     error_callback?: (error: { message?: string; type?: string }) => void;
   }): TokenClient;
   revoke(accessToken: string, callback?: () => void): void;
+  hasGrantedAllScopes?(response: TokenResponse, ...scopes: string[]): boolean;
 }
 
 declare global {
@@ -76,6 +78,11 @@ export async function requestGoogleAccessToken(): Promise<string> {
       callback: (response) => {
         if (!response.access_token) {
           reject(new Error(response.error_description || response.error || "Google 授权未返回访问令牌"));
+          return;
+        }
+        if (oauth2.hasGrantedAllScopes && !oauth2.hasGrantedAllScopes(response, ...GOOGLE_SCOPES)) {
+          oauth2.revoke(response.access_token);
+          reject(new Error("Google 授权缺少必要 Calendar 权限；请重新授权并勾选所需范围"));
           return;
         }
         accessToken = response.access_token;

@@ -43,7 +43,7 @@ export async function generateIcsV2(timetable: NormalizedTimetableV2, options: I
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//terics//Timetable Bridge 0.5//ZH-CN",
+      "PRODID:-//terics//Timetable Bridge 0.6//ZH-CN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     `X-WR-CALNAME:${escapeIcsText(timetable.term.termName || "我的课表")}`,

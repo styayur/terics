@@ -17,14 +17,31 @@ import {
   type PeriodTime,
 } from "./core/types";
 import { buildV2Events } from "./v2/events";
-import { parseTericsJson, readTericsHash } from "./v2/exchange";
+import { parseTericsJson, readTericsHash, serializeTericsJson } from "./v2/exchange";
 import { generateIcsV2, suggestedIcsV2FileName } from "./v2/ics";
 import { rawCoursesToV2 } from "./v2/convert";
 import type { NormalizedTimetableV2 } from "./v2/types";
 import { validateTimetableV2 } from "./v2/validate";
 import { clearGoogleToken, currentGoogleAccessToken, googleOAuthConfigured, requestGoogleAccessToken } from "./google/auth-web";
 import { GoogleCalendarRestClient } from "./google/client";
-import { executeSyncPlan, planGoogleSync, type GoogleCalendarInfo, type SyncPlan } from "./google/planner";
+import {
+  executeSyncPlan,
+  planGoogleSync,
+  removeCourseFromGoogleCalendar,
+  type GoogleCalendarInfo,
+  type GoogleCourseRemovalResult,
+  type SyncPlan,
+} from "./google/planner";
+import { claimHandoffFromLocation } from "./extension/web-claim";
+import { extractDroppedUrl } from "./connectors/resolver/drop";
+import { resolveSchoolUrl } from "./connectors/resolver/resolver";
+import { PortalUrlValidationError, type SchoolResolution } from "./connectors/resolver/url-validator";
+import {
+  previewCourseRemoval,
+  removeCourseFromTimetable,
+  type CourseRemovalPreview,
+  type TimetableRemovalResult,
+} from "./v2/removal";
 
 const STEP_ORDER = ["select", "detect", "timing", "preview", "export"] as const;
 type StepName = (typeof STEP_ORDER)[number];
@@ -51,6 +68,16 @@ interface AppState {
   lastExportedCount: number;
 }
 
+interface ActiveCourseRemoval {
+  timetable: NormalizedTimetableV2;
+  backupTimetable: NormalizedTimetableV2;
+  preview: CourseRemovalPreview;
+  localApplied: boolean;
+  lastLocalResult?: TimetableRemovalResult;
+  lastCalendarResult?: GoogleCourseRemovalResult;
+  lastCalendarError?: string;
+}
+
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
   if (!found) throw new Error(`缺少界面元素 #${id}`);
@@ -59,6 +86,21 @@ function element<T extends HTMLElement>(id: string): T {
 
 const fileInput = element<HTMLInputElement>("file-input");
 const dropzone = element<HTMLDivElement>("dropzone");
+const urlDropzone = element<HTMLDivElement>("url-dropzone");
+const urlForm = element<HTMLFormElement>("url-form");
+const urlInput = element<HTMLInputElement>("url-input");
+const urlSubmit = element<HTMLButtonElement>("url-submit");
+const urlBridgeState = element<HTMLElement>("url-bridge-state");
+const urlResult = element<HTMLElement>("url-result");
+const urlResultSchool = element<HTMLElement>("url-result-school");
+const urlResultStatus = element<HTMLElement>("url-result-status");
+const urlResultVendor = element<HTMLElement>("url-result-vendor");
+const urlResultConnector = element<HTMLElement>("url-result-connector");
+const urlResultConfidence = element<HTMLElement>("url-result-confidence");
+const urlResultMethod = element<HTMLElement>("url-result-method");
+const urlNextAction = element<HTMLElement>("url-next-action");
+const urlEvidence = element<HTMLUListElement>("url-evidence");
+const urlOpen = element<HTMLButtonElement>("url-open");
 const parseStatus = element<HTMLDivElement>("parse-status");
 const parseStatusText = element<HTMLSpanElement>("parse-status-text");
 const parseReadout = element<HTMLDivElement>("parse-readout");
@@ -98,6 +140,25 @@ const courseDetailTeacher = element<HTMLElement>("course-detail-teacher");
 const courseDetailWeeks = element<HTMLElement>("course-detail-weeks");
 const courseDetailSource = element<HTMLElement>("course-detail-source");
 const courseDetailNote = element<HTMLElement>("course-detail-note");
+const courseDetailId = element<HTMLElement>("course-detail-id");
+const courseDetailOccurrences = element<HTMLElement>("course-detail-occurrences");
+const removeCourseButton = element<HTMLButtonElement>("remove-course");
+const courseRemoval = element<HTMLElement>("course-removal");
+const courseRemovalClose = element<HTMLButtonElement>("course-removal-close");
+const removalCourse = element<HTMLElement>("removal-course");
+const removalTerm = element<HTMLElement>("removal-term");
+const removalContext = element<HTMLElement>("removal-context");
+const removalWeeks = element<HTMLElement>("removal-weeks");
+const removalMeetings = element<HTMLElement>("removal-meetings");
+const removalOccurrences = element<HTMLElement>("removal-occurrences");
+const removalOverrides = element<HTMLElement>("removal-overrides");
+const removalCourseId = element<HTMLElement>("removal-course-id");
+const removalCalendarTarget = element<HTMLElement>("removal-calendar-target");
+const removalConfirm = element<HTMLInputElement>("removal-confirm");
+const removalBackup = element<HTMLButtonElement>("removal-backup");
+const removalSubmit = element<HTMLButtonElement>("removal-submit");
+const removalCancel = element<HTMLButtonElement>("removal-cancel");
+const removalReport = element<HTMLElement>("removal-report");
 const viewGridButton = element<HTMLButtonElement>("view-grid");
 const viewListButton = element<HTMLButtonElement>("view-list");
 const provenanceLedger = element<HTMLElement>("provenance-ledger");
@@ -126,11 +187,14 @@ const googleConfigState = element<HTMLElement>("google-config-state");
 const googleConnect = element<HTMLButtonElement>("google-connect");
 const googleCreateCalendar = element<HTMLButtonElement>("google-create-calendar");
 const googleCalendarSelect = element<HTMLSelectElement>("google-calendar-select");
+const googleCalendarIdInput = element<HTMLInputElement>("google-calendar-id");
+const googleTargetSummary = element<HTMLElement>("google-target-summary");
 const googlePlanSync = element<HTMLButtonElement>("google-plan-sync");
 const googlePlanPanel = element<HTMLElement>("google-plan");
 const googleCreateCount = element<HTMLElement>("google-create-count");
 const googleUpdateCount = element<HTMLElement>("google-update-count");
 const googleSkipCount = element<HTMLElement>("google-skip-count");
+const googleConflictCount = element<HTMLElement>("google-conflict-count");
 const googleDeleteCount = element<HTMLElement>("google-delete-count");
 const googleWarningBox = element<HTMLElement>("google-warning-box");
 const googleWarningList = element<HTMLUListElement>("google-warning-list");
@@ -174,9 +238,11 @@ let rebuildGeneration = 0;
 let toastTimer: number | undefined;
 let googleClient: GoogleCalendarRestClient | null = null;
 let googleCurrentPlan: SyncPlan | null = null;
+let activeRemoval: ActiveCourseRemoval | null = null;
+let activeDetailBlock: PreviewBlock | null = null;
 let activeDetailTrigger: HTMLElement | null = null;
 
-function setStatus(kind: "idle" | "working" | "success" | "error", text: string): void {
+function setStatus(kind: "idle" | "working" | "success" | "partial" | "error", text: string): void {
   parseStatus.className = `status-chip ${kind}`;
   parseStatusText.textContent = text;
 }
@@ -491,11 +557,13 @@ function setPreviewMode(mode: "grid" | "list"): void {
 
 function closeCourseDetail(restoreFocus = false): void {
   courseDetail.hidden = true;
+  activeDetailBlock = null;
   if (restoreFocus && activeDetailTrigger?.isConnected) activeDetailTrigger.focus();
 }
 
 function showCourseDetail(block: PreviewBlock, trigger: HTMLElement): void {
   activeDetailTrigger = trigger;
+  activeDetailBlock = block;
   courseDetail.hidden = false;
   courseDetail.dataset.kind = block.kind;
   courseDetail.tabIndex = -1;
@@ -507,8 +575,203 @@ function showCourseDetail(block: PreviewBlock, trigger: HTMLElement): void {
   courseDetailWeeks.textContent = `第 ${block.week} 周 · ${block.weekRule || "周次未提供"}`;
   courseDetailSource.textContent = [block.sourceAdapterId, block.sourceTermId].filter(Boolean).join(" · ") || state.parsed?.formatLabel || "本地文件";
   courseDetailNote.textContent = [block.note, block.conflict ? "此课程与同一时段的另一门课程冲突。" : ""].filter(Boolean).join(" ");
+  courseDetailId.textContent = block.courseId || "身份缺失";
+  courseDetailOccurrences.textContent = block.courseId
+    ? `${state.previewBlocks.filter((item) => item.courseId === block.courseId).length} 个实例`
+    : "不可执行课程级删除";
+  removeCourseButton.disabled = !state.v2 || !block.courseId;
   courseDetail.focus({ preventScroll: true });
   courseDetail.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
+function downloadTextFile(name: string, text: string, type: string): void {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
+}
+
+function selectedRemovalScope(): "local" | "calendar" | "both" {
+  return (
+    (document.querySelector<HTMLInputElement>('input[name="removal-scope"]:checked')?.value as
+      | "local"
+      | "calendar"
+      | "both"
+      | undefined) ?? "local"
+  );
+}
+
+function removalCalendarLabel(): string {
+  if (!googleClient) return "Google Calendar：未连接";
+  const selected = googleCalendarSelect.selectedOptions[0]?.textContent?.trim();
+  const calendarId = selectedGoogleCalendarId();
+  return selected && calendarId
+    ? `Google Calendar：${googleCalendarIdInput.value.trim() ? "自定义 calendarId" : selected}（${calendarId}）`
+    : "Google Calendar：未选择目标日历";
+}
+
+function updateRemovalState(): void {
+  if (!activeRemoval) {
+    removalSubmit.disabled = true;
+    return;
+  }
+  const scope = selectedRemovalScope();
+  const needsCalendar = scope === "calendar" || scope === "both";
+  removalCalendarTarget.textContent = needsCalendar
+    ? removalCalendarLabel()
+    : "本次只写入新的本地文件；原始文件保持不变";
+  const localAlreadyDone = scope !== "calendar" && activeRemoval.localApplied;
+  const calendarDone = Boolean(activeRemoval.lastCalendarResult && activeRemoval.lastCalendarResult.failures.length === 0);
+  const calendarRetry =
+    scope !== "local" && Boolean(activeRemoval.lastCalendarError || activeRemoval.lastCalendarResult?.failures.length);
+  removalSubmit.textContent =
+    localAlreadyDone && calendarRetry
+      ? "重试 Calendar 删除"
+      : localAlreadyDone
+        ? "本地课程已移除"
+        : "确认移除课程";
+  const allRequestedDone = scope === "local" ? localAlreadyDone : scope === "calendar" ? calendarDone : localAlreadyDone && calendarDone;
+  removalSubmit.disabled = !removalConfirm.checked || allRequestedDone || (localAlreadyDone && !calendarRetry && scope === "local");
+}
+
+function closeCourseRemoval(): void {
+  courseRemoval.hidden = true;
+  removalReport.hidden = true;
+  removalConfirm.checked = false;
+  activeRemoval = null;
+  updateRemovalState();
+}
+
+async function openCourseRemoval(block: PreviewBlock): Promise<void> {
+  if (!block.courseId) {
+    showToast("该事件缺少可靠 courseId，不能执行课程级删除", "error");
+    return;
+  }
+  const timetable = await ensureV2Timetable();
+  const build = await buildV2Events(timetable);
+  if (build.issues.some((issue) => issue.severity === "error")) {
+    throw new Error("当前课表存在构建错误，不能生成课程删除预览");
+  }
+  const preview = previewCourseRemoval(timetable, build.events, block.courseId);
+  activeRemoval = {
+    timetable: structuredClone(timetable),
+    backupTimetable: structuredClone(timetable),
+    preview,
+    localApplied: false,
+  };
+  removalCourse.textContent = `${preview.courseName}${preview.courseCode ? ` · ${preview.courseCode}` : ""}`;
+  removalTerm.textContent = preview.termId;
+  removalContext.textContent = [preview.teacher, preview.rooms.join(" / ")].filter(Boolean).join(" · ") || "未提供";
+  removalWeeks.textContent = preview.weekRange;
+  removalMeetings.textContent = String(preview.meetingCount);
+  removalOccurrences.textContent = String(preview.occurrenceCount);
+  removalOverrides.textContent = String(preview.overrideCount);
+  removalCourseId.textContent = preview.courseId;
+  removalReport.hidden = true;
+  removalReport.replaceChildren();
+  removalConfirm.checked = false;
+  courseRemoval.hidden = false;
+  courseRemoval.focus({ preventScroll: true });
+  courseRemoval.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  updateRemovalState();
+}
+
+function appendRemovalReport(label: string, status: "success" | "partial" | "error", lines: string[]): void {
+  const block = document.createElement("div");
+  block.className = `removal-report-block ${status}`;
+  const heading = document.createElement("strong");
+  heading.textContent = `${label} · ${status.toUpperCase()}`;
+  const list = document.createElement("ul");
+  for (const line of lines) {
+    const item = document.createElement("li");
+    item.textContent = line;
+    list.append(item);
+  }
+  block.append(heading, list);
+  removalReport.append(block);
+}
+
+async function executeCourseRemoval(): Promise<void> {
+  if (!activeRemoval || !removalConfirm.checked) return;
+  const scope = selectedRemovalScope();
+  const wantsLocal = scope === "local" || scope === "both";
+  const wantsCalendar = scope === "calendar" || scope === "both";
+  removalSubmit.disabled = true;
+  removalReport.hidden = false;
+  removalReport.replaceChildren();
+
+  let localPlan: TimetableRemovalResult | null = null;
+  if (wantsLocal && !activeRemoval.localApplied) {
+    try {
+      localPlan = removeCourseFromTimetable(activeRemoval.timetable, activeRemoval.preview.courseId);
+    } catch (error) {
+      appendRemovalReport("本地文件", "error", [error instanceof Error ? error.message : String(error)]);
+      if (!wantsCalendar) {
+        updateRemovalState();
+        return;
+      }
+    }
+  }
+
+  if (localPlan) {
+    activeRemoval.timetable = structuredClone(localPlan.timetable);
+    activeRemoval.localApplied = true;
+    activeRemoval.lastLocalResult = localPlan;
+    state.v2 = structuredClone(localPlan.timetable);
+    state.parsed = null;
+    state.sourceName = `${state.sourceName || "timetable"}-course-removed.terics.json`;
+    renderV2Readout(localPlan.timetable);
+    renderIssueBox(v2Issues(localPlan.timetable));
+    await rebuild();
+    const jsonName = `terics-${localPlan.timetable.term.termId}-course-removed.terics.json`;
+    downloadTextFile(jsonName, serializeTericsJson(localPlan.timetable), "application/json;charset=utf-8");
+    appendRemovalReport("本地文件", "success", [
+      `课程：${localPlan.beforeCourses} → ${localPlan.afterCourses}`,
+      `上课实例：${localPlan.beforeMeetings} → ${localPlan.afterMeetings}`,
+      `关联调课记录：删除 ${localPlan.removedOverrides} 条`,
+      `新文件：${jsonName}（原始文件未覆盖）`,
+    ]);
+    closeCourseDetail();
+  } else if (wantsLocal && activeRemoval.localApplied) {
+    appendRemovalReport("本地文件", "success", ["该课程已在当前内存数据中移除；不会重复删除。"]);
+  }
+
+  if (wantsCalendar) {
+    const calendarId = selectedGoogleCalendarId();
+    if (!googleClient || !calendarId) {
+      activeRemoval.lastCalendarError = !googleClient ? "Google Calendar 未连接" : "未选择目标日历";
+      activeRemoval.lastCalendarResult = undefined;
+      appendRemovalReport("Google Calendar", "error", [activeRemoval.lastCalendarError]);
+    } else {
+      try {
+        const result = await removeCourseFromGoogleCalendar(
+          googleClient,
+          calendarId,
+          activeRemoval.preview.termId,
+          activeRemoval.preview.courseId,
+          activeRemoval.preview.courseName,
+        );
+        activeRemoval.lastCalendarResult = result;
+        activeRemoval.lastCalendarError = result.failures.length > 0 ? `${result.failures.length} 个事件删除失败` : undefined;
+        appendRemovalReport("Google Calendar", result.failures.length > 0 ? "partial" : "success", [
+          `目标日历：${googleCalendarIdInput.value.trim() ? "自定义 calendarId" : googleCalendarSelect.selectedOptions[0]?.textContent || calendarId}（${calendarId}）`,
+          `候选：${result.candidates} · 删除：${result.deleted} · 已不存在：${result.alreadyMissing}`,
+          `跳过：${result.skipped} · 失败：${result.failures.length}`,
+          ...result.failures.map((failure) => `${failure.eventId || "未知事件"}：${failure.error}`),
+        ]);
+      } catch (error) {
+        activeRemoval.lastCalendarResult = undefined;
+        activeRemoval.lastCalendarError = error instanceof Error ? error.message : String(error);
+        appendRemovalReport("Google Calendar", "error", [activeRemoval.lastCalendarError]);
+      }
+    }
+  }
+  updateRemovalState();
 }
 
 function renderWeekControls(blocks: PreviewBlock[]): void {
@@ -807,12 +1070,121 @@ function showParseFailure(error: unknown): void {
             severity: "error",
             code: "unexpected",
             message: error instanceof Error ? error.message : String(error),
-            hint: "请确认文件不是扫描图片、加密工作簿或旧版二进制 XLS。",
+            hint: "请检查扩展是否安装、教务登录是否过期，或确认文件不是扫描图片、加密工作簿或旧版二进制 XLS。",
           },
         ],
   );
   showToast(error instanceof Error ? error.message : "文件解析失败", "error");
 }
+
+function browserBridgeAvailable(): boolean {
+  return Boolean((globalThis as unknown as { chrome?: { runtime?: { sendMessage?: unknown } } }).chrome?.runtime?.sendMessage);
+}
+
+function updateBrowserBridgeState(): void {
+  urlBridgeState.textContent = browserBridgeAvailable()
+    ? "扩展桥接：浏览器 API 可见，等待从扩展发起 handoff"
+    : "扩展桥接：未检测到；可安装扩展或用文件回退";
+  urlBridgeState.dataset.available = String(browserBridgeAvailable());
+}
+
+function renderUrlResolution(resolution: SchoolResolution): void {
+  urlResult.hidden = false;
+  urlResultSchool.textContent = resolution.schoolName || "未登记的学校";
+  urlResultStatus.textContent = resolution.status.toUpperCase();
+  urlResultStatus.dataset.status = resolution.status;
+  urlResultStatus.className = `status-chip ${resolution.status}`;
+  urlResultVendor.textContent = resolution.vendorLabel || resolution.vendor || "未识别 vendor";
+  urlResultConnector.textContent = resolution.connectorId || "generic-dom / 文件回退";
+  urlResultConfidence.textContent = `${Math.round(resolution.confidence * 100)}%`;
+  urlResultMethod.textContent = resolution.requiresExtension ? "Extension + DOM/API" : "Manual / File";
+  urlNextAction.textContent = resolution.nextAction;
+  urlEvidence.replaceChildren(
+    ...[...resolution.evidence, ...resolution.warnings].map((item) => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      return li;
+    }),
+  );
+  urlOpen.disabled = false;
+  urlOpen.dataset.url = resolution.normalizedUrl;
+  showToast(`已识别：${resolution.schoolName || resolution.vendorLabel || resolution.normalizedHost}`);
+}
+
+function submitPortalUrl(raw: string): void {
+  urlResult.hidden = true;
+  urlSubmit.disabled = true;
+  urlInput.setAttribute("aria-invalid", "false");
+  setStatus("working", "正在本地识别学校与 Connector");
+  try {
+    const resolution = resolveSchoolUrl(raw);
+    urlInput.value = resolution.normalizedUrl;
+    renderUrlResolution(resolution);
+    setStatus(resolution.status === "verified" ? "success" : "partial", resolution.status === "verified" ? "学校已识别 · Verified 范围有限" : "已识别，需实验性验证");
+  } catch (error) {
+    urlInput.setAttribute("aria-invalid", "true");
+    const message = error instanceof PortalUrlValidationError ? error.message : error instanceof Error ? error.message : String(error);
+    renderIssueBox([{ severity: "error", code: "url_resolution_failed", message }]);
+    setStatus("error", "网址无法识别");
+    showToast(message, "error");
+  } finally {
+    urlSubmit.disabled = false;
+  }
+}
+
+function handleUrlDrop(event: DragEvent): void {
+  event.preventDefault();
+  urlDropzone.classList.remove("dragover");
+  const transfer = event.dataTransfer;
+  if (!transfer) return;
+  if (transfer.files.length > 0) {
+    void handleFile(transfer.files[0]!);
+    return;
+  }
+  const url = extractDroppedUrl({
+    uriList: transfer.getData("text/uri-list"),
+    plainText: transfer.getData("text/plain"),
+    html: transfer.getData("text/html"),
+  });
+  if (!url) {
+    renderIssueBox([{ severity: "error", code: "drop_url_missing", message: "拖入内容中没有检测到 HTTP(S) 链接" }]);
+    setStatus("error", "拖拽内容不是网址");
+    return;
+  }
+  urlInput.value = url;
+  submitPortalUrl(url);
+}
+
+urlForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitPortalUrl(urlInput.value);
+});
+urlOpen.addEventListener("click", () => {
+  const target = urlOpen.dataset.url;
+  if (target) window.open(target, "_blank", "noopener,noreferrer");
+});
+urlDropzone.addEventListener("click", (event) => {
+  if (event.target !== urlDropzone) return;
+  urlInput.focus();
+});
+urlDropzone.addEventListener("keydown", (event) => {
+  if (event.target === urlDropzone && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    urlInput.focus();
+  }
+});
+for (const type of ["dragenter", "dragover"]) {
+  urlDropzone.addEventListener(type, (event) => {
+    const dragEvent = event as DragEvent;
+    dragEvent.preventDefault();
+    if (dragEvent.dataTransfer) dragEvent.dataTransfer.dropEffect = "copy";
+    urlDropzone.classList.add("dragover");
+  });
+}
+urlDropzone.addEventListener("dragleave", (event) => {
+  if (!urlDropzone.contains(event.relatedTarget as Node | null)) urlDropzone.classList.remove("dragover");
+});
+urlDropzone.addEventListener("drop", handleUrlDrop);
 
 async function addIssueForBuild(build: BuildResult): Promise<void> {
   const parseIssues = state.parsed?.issues ?? (state.v2 ? v2Issues(state.v2) : []);
@@ -891,13 +1263,37 @@ function storeGoogleCalendar(calendar: StoredGoogleCalendar): void {
 
 function renderGoogleCalendarOptions(selectedId = googleCalendarSelect.value): void {
   googleCalendarSelect.replaceChildren(new Option("选择 terics 日历", ""));
-  for (const calendar of readStoredGoogleCalendars()) {
-    googleCalendarSelect.append(new Option(calendar.summary, calendar.id));
+  const calendars = readStoredGoogleCalendars();
+  if (!calendars.some((calendar) => calendar.id === "primary")) {
+    googleCalendarSelect.append(new Option("主日历（primary）", "primary"));
+  }
+  for (const calendar of calendars) {
+    if (calendar.id !== "primary") googleCalendarSelect.append(new Option(calendar.summary, calendar.id));
   }
   if (!googleCalendarSelect.value && selectedId) googleCalendarSelect.value = selectedId;
-  const hasSelection = Boolean(googleCalendarSelect.value);
+  const hasSelection = Boolean(googleCalendarIdInput.value.trim() || googleCalendarSelect.value);
   googleCreateCalendar.disabled = !googleClient;
   googlePlanSync.disabled = !googleClient || !hasSelection;
+  updateGoogleTarget();
+}
+
+function selectedGoogleCalendarId(): string {
+  return googleCalendarIdInput.value.trim() || googleCalendarSelect.value;
+}
+
+function updateGoogleTarget(): void {
+  const calendarId = selectedGoogleCalendarId();
+  if (!calendarId) {
+    googleTargetSummary.textContent = "目标日历：未选择";
+    googleTargetSummary.dataset.status = "unselected";
+  } else {
+    const selectedLabel = googleCalendarSelect.selectedOptions[0]?.textContent?.trim();
+    const label = googleCalendarIdInput.value.trim() ? "自定义 calendarId" : selectedLabel || calendarId;
+    googleTargetSummary.textContent = `目标日历：${label} · ${calendarId}`;
+    googleTargetSummary.dataset.status = "selected";
+  }
+  googlePlanSync.disabled = !googleClient || !calendarId;
+  if (activeRemoval) updateRemovalState();
 }
 
 function invalidateGooglePlan(): void {
@@ -933,7 +1329,7 @@ function setupGooglePanel(): void {
   }
   googleUnavailable.hidden = true;
   googleConfigured.hidden = false;
-  googleConfigState.textContent = "OAuth 已配置 · 内存令牌";
+  googleConfigState.textContent = "OAuth 已配置 · GIS 内存令牌";
   renderGoogleCalendarOptions();
 }
 
@@ -946,7 +1342,7 @@ async function connectGoogle(): Promise<void> {
     try {
       const remote = await googleClient.listCalendars();
       for (const calendar of remote) {
-        if (calendar.summary.startsWith("terics /") && !readStoredGoogleCalendars().some((item) => item.id === calendar.id)) {
+        if (!readStoredGoogleCalendars().some((item) => item.id === calendar.id)) {
           storeGoogleCalendar({ ...calendar, termId: "unknown", createdAt: new Date().toISOString() });
         }
       }
@@ -985,7 +1381,7 @@ async function previewGoogleSync(): Promise<void> {
     showToast("请先连接 Google 账户", "error");
     return;
   }
-  const calendarId = googleCalendarSelect.value;
+  const calendarId = selectedGoogleCalendarId();
   if (!calendarId) {
     showToast("请选择独立 terics 日历", "error");
     return;
@@ -1002,6 +1398,7 @@ async function previewGoogleSync(): Promise<void> {
     googleCreateCount.textContent = String(plan.creates.length);
     googleUpdateCount.textContent = String(plan.updates.length);
     googleSkipCount.textContent = String(plan.skips.length);
+    googleConflictCount.textContent = String(plan.conflicts.length);
     googleDeleteCount.textContent = String(plan.deletes.length);
     googleWarningList.replaceChildren();
     for (const warning of plan.warnings) {
@@ -1037,7 +1434,7 @@ async function applyGoogleSync(): Promise<void> {
       ...result,
     };
     localStorage.setItem(GOOGLE_LAST_SYNC_STORE, JSON.stringify(summary));
-    googleSyncStatus.textContent = `完成 · 新建 ${result.created} · 更新 ${result.updated} · 跳过 ${result.skipped} · 删除 ${result.deleted}`;
+    googleSyncStatus.textContent = `完成 · 新建 ${result.created} · 更新 ${result.updated} · 跳过 ${result.skipped} · 冲突 ${result.conflicted} · 删除 ${result.deleted}`;
     googleDeleteConfirm.checked = false;
     if (result.errors.length > 0) {
       showToast(`${result.errors.length} 个同步操作失败；详见控制台警告`, "error");
@@ -1326,15 +1723,50 @@ courseFilter.addEventListener("input", renderPreview);
 viewGridButton.addEventListener("click", () => setPreviewMode("grid"));
 viewListButton.addEventListener("click", () => setPreviewMode("list"));
 courseDetailClose.addEventListener("click", () => closeCourseDetail(true));
+removeCourseButton.addEventListener("click", () => {
+  if (!activeDetailBlock) return;
+  void openCourseRemoval(activeDetailBlock).catch((error) => {
+    showToast(error instanceof Error ? error.message : String(error), "error");
+  });
+});
+courseRemovalClose.addEventListener("click", closeCourseRemoval);
+removalCancel.addEventListener("click", closeCourseRemoval);
+removalConfirm.addEventListener("change", updateRemovalState);
+for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="removal-scope"]')) {
+  radio.addEventListener("change", updateRemovalState);
+}
+removalSubmit.addEventListener("click", () => void executeCourseRemoval());
+removalBackup.addEventListener("click", async () => {
+  if (!activeRemoval) return;
+  removalBackup.disabled = true;
+  try {
+    const output = await generateIcsV2(activeRemoval.backupTimetable, { alarmMinutes: config.alarmMinutes });
+    const name = suggestedIcsV2FileName(activeRemoval.backupTimetable).replace(/\.ics$/i, "-before-course-removal.ics");
+    downloadTextFile(name, output.ics, "text/calendar;charset=utf-8");
+    showToast(`已生成删除前备份：${name}`);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), "error");
+  } finally {
+    removalBackup.disabled = false;
+  }
+});
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !courseDetail.hidden) closeCourseDetail(true);
+  if (event.key !== "Escape") return;
+  if (!courseRemoval.hidden) closeCourseRemoval();
+  else if (!courseDetail.hidden) closeCourseDetail(true);
 });
 conflictAck.addEventListener("change", updateExportButton);
 googleConnect.addEventListener("click", () => void connectGoogle());
 googleCreateCalendar.addEventListener("click", () => void createGoogleCalendar());
 googleCalendarSelect.addEventListener("change", () => {
-  googlePlanSync.disabled = !googleClient || !googleCalendarSelect.value;
+  if (googleCalendarSelect.value) googleCalendarIdInput.value = "";
   invalidateGooglePlan();
+  updateGoogleTarget();
+});
+googleCalendarIdInput.addEventListener("input", () => {
+  if (googleCalendarIdInput.value.trim()) googleCalendarSelect.value = "";
+  invalidateGooglePlan();
+  updateGoogleTarget();
 });
 googlePlanSync.addEventListener("click", () => void previewGoogleSync());
 googleDeleteConfirm.addEventListener("change", () => {
@@ -1392,12 +1824,21 @@ exportButton.addEventListener("click", async () => {
 syncConfigFields();
 settingsPanel.classList.add("is-dormant");
 previewPanel.classList.add("is-dormant");
-setStatus("idle", "等待文件");
+updateBrowserBridgeState();
+setStatus("idle", "等待网址或文件");
 setActiveStep("select");
 clearCalendarOutputs();
 setupGooglePanel();
 async function handleHandoffHash(): Promise<void> {
   try {
+    const claimed = await claimHandoffFromLocation({
+      hash: window.location.hash,
+      href: window.location.href,
+    });
+    if (claimed) {
+      await processV2Timetable("extension-handoff.terics.json", 0, claimed);
+      return;
+    }
     const handoff = readTericsHash(window.location.hash);
     if (!handoff) return;
     history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);

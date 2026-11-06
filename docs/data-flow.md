@@ -34,14 +34,17 @@ Credentials and CSRF values are not included in storage or export.
 
 ```text
 Normalized timetable
-  -> UTF-8
-  -> base64url
-  -> URL fragment (after #)
-  -> Web app decodes locally
+  -> SHA-256 + JSON byte size
+  -> chrome.storage.local pending record (max 2 MiB)
+  -> opaque URL fragment (requestId + nonce + extId + target + expiry)
+  -> Web chrome.runtime.sendMessage(extensionId)
+  -> sender origin/path + request/nonce + TTL + hash + Schema checks
+  -> consumed=true / replay protection
+  -> Web preview
   -> fragment removed with history.replaceState
 ```
 
-URL fragments are not part of HTTP requests to the static host.
+URL fragments are not part of HTTP requests to the static host. The timetable payload itself is never placed in the URL. Large payloads force a `.terics.json` download fallback.
 
 ## Python Playwright extraction
 
@@ -60,15 +63,15 @@ GUI selects school
 
 ```text
 Normalized events
-  -> managed-event query (terics_source + term_id)
-  -> create / update / skip / delete-candidate plan
+  -> managed-event query (camelCase + legacy snake_case)
+  -> create / update / skip / conflict / delete-candidate plan
   -> user preview
   -> explicit execution confirmation
   -> delete-candidate confirmation if present
   -> Google Calendar API
 ```
 
-The API client never lists every calendar event without the terics private-property filter. No background sync is scheduled.
+The user must select or explicitly enter the target calendarId. The planner writes stable event identity and rendered-field hashes, and skips updates when a managed event was manually edited. Empty data cannot generate delete actions. No background sync is scheduled.
 
 ## Imported `.terics.json`
 

@@ -1,10 +1,11 @@
 import { connectorManifests } from "../src/connectors/registry";
 import { addDaysIso, daysBetween, mondayOfIso, weekdayZh } from "../src/core/dates";
 import { generateIcsV2, suggestedIcsV2FileName } from "../src/v2/ics";
-import { encodeTericsFragment, serializeTericsJson } from "../src/v2/exchange";
+import { serializeTericsJson } from "../src/v2/exchange";
 import { buildV2Events } from "../src/v2/events";
 import type { NormalizedTimetableV2 } from "../src/v2/types";
 import { inspectTimetableV2 } from "../src/v2/validate";
+import { createPendingHandoff, HANDOFF_STORAGE_KEY } from "../src/extension/handoff";
 
 const WEB_APP_URL = "https://styayur.github.io/terics/";
 const STORAGE_KEY = "tericsLastExtraction";
@@ -97,6 +98,16 @@ function downloadBlob(name: string, content: string, type: string): void {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function downloadCurrentJson(): boolean {
+  if (!currentTimetable) return false;
+  downloadBlob(
+    `terics-${currentTimetable.term.termId}.terics.json`,
+    serializeTericsJson(currentTimetable),
+    "application/json;charset=utf-8",
+  );
+  return true;
 }
 
 async function refreshDownloadState(): Promise<void> {
@@ -344,7 +355,7 @@ async function loadStored(): Promise<void> {
 }
 
 async function clearLocalData(): Promise<void> {
-  await chrome.storage.local.remove(STORAGE_KEY);
+  await chrome.storage.local.remove([STORAGE_KEY, HANDOFF_STORAGE_KEY]);
   currentTimetable = null;
   currentBuild = null;
   resultPanel.hidden = true;
@@ -372,11 +383,7 @@ extractButton.addEventListener("click", () => void extract());
 conflictAck.addEventListener("change", () => void refreshDownloadState());
 jsonButton.addEventListener("click", () => {
   if (!currentTimetable) return;
-  downloadBlob(
-    `terics-${currentTimetable.term.termId}.terics.json`,
-    serializeTericsJson(currentTimetable),
-    "application/json;charset=utf-8",
-  );
+  downloadCurrentJson();
 });
 icsButton.addEventListener("click", async () => {
   if (!currentTimetable) return;
@@ -391,13 +398,23 @@ icsButton.addEventListener("click", async () => {
 webButton.addEventListener("click", async () => {
   if (!currentTimetable) return;
   try {
-    const fragment = encodeTericsFragment(currentTimetable);
-    const url = `${WEB_APP_URL}#${fragment}`;
-    if (url.length > 1_500_000) throw new Error("课表数据过大，请下载 .terics.json 后手动导入 Web");
-    await chrome.tabs.create({ url });
-    setStatus("success", "已通过 URL 片段交给 Web；片段不会发送到服务器");
+    clearError();
+    const handoff = await createPendingHandoff({
+      timetable: currentTimetable,
+      extensionId: chrome.runtime.id,
+      targetOrigin: new URL(WEB_APP_URL).origin,
+    });
+    await chrome.storage.local.set({ [HANDOFF_STORAGE_KEY]: handoff.record });
+    await chrome.tabs.create({ url: handoff.url });
+    setStatus("success", "已通过一次性本地 handoff 交给 Web；URL 中不含课表数据");
   } catch (error) {
-    showError(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    if (/大小限制/.test(message) && downloadCurrentJson()) {
+      setStatus("error", "课表过大，已下载 JSON 回退文件");
+      showError(`${message}。JSON 已下载，请在 Web 首页导入该文件。`);
+    } else {
+      showError(message);
+    }
   }
 });
 clearButton.addEventListener("click", () => void clearLocalData());

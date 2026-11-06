@@ -2,6 +2,8 @@
 
 The support level describes **evidence**, not ambition.
 
+v0.6 adds URL-first resolution. A URL match only identifies a school/vendor candidate; it does not prove that extraction will succeed. The Web app keeps `VERIFIED`, `EXPERIMENTAL` and `UNKNOWN` separate from the later extraction result.
+
 ## Wuhan University of Technology (WHUT) — Verified
 
 - **Platform**: Wisedu jwapp / WHUT student timetable layout
@@ -45,3 +47,7 @@ The generic Wisedu adapter is intentionally separate from the WHUT school adapte
 ## Generic DOM
 
 `generic-dom` can attempt a rendered HTML timetable only after explicit user action. It is intentionally low-confidence and cannot claim adjustment completeness. Status: **Experimental**.
+
+## URL-only recognition
+
+The Resolver can identify a vendor path such as `/jwglxt/`, `/jwapp/` or `/jsxsd/`, but this remains Experimental until a specific school has real environment evidence. Unknown domains never receive guessed API calls.

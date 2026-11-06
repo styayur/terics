@@ -50,6 +50,7 @@ describe("extension message contract", () => {
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.permissions).toEqual(["activeTab", "scripting", "storage"]);
     expect(manifest.host_permissions).toBeUndefined();
+    expect(manifest.externally_connectable).toEqual({ matches: ["https://styayur.github.io/terics/*"] });
     const vendors = new Set(connectorManifests().map((item) => item.vendor));
     expect([...vendors]).toEqual(expect.arrayContaining(["wisedu", "zf", "qiangzhi", "qingguo"]));
   });

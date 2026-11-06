@@ -35,6 +35,8 @@ The WHUT status is based on a real authenticated 2026-2027-1 student session:
 ## Capability Notes
 
 - A missing teacher or room is a validation warning; the extractor does not fabricate data.
+- Non-empty `practiceList` fixture behavior is tested; real non-empty practice semesters remain unverified.
+- `notArrangeList` records lacking weekday/period data are preserved as warnings and are not invented as events.
 - All connectors require the user to trigger extraction from an already-authenticated page.
 - No connector performs course changes, enrollment, withdrawal or other write operations.
 - WHUT verification is term- and variant-specific. A future WHUT response change must be treated as an unverified variant until compared again.

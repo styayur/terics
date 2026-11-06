@@ -26,6 +26,6 @@ Do not submit real timetables, student identifiers, cookies, tokens, OAuth clien
 
 ## Scope
 
-Security fixes target the latest release, including prereleases. The current release is `v0.5.0-rc.2`.
+Security fixes target the latest release, including prereleases. The current candidate is `v0.6.0-rc.1`.
 
 See [docs/threat-model.md](docs/threat-model.md) and [docs/privacy.md](docs/privacy.md).

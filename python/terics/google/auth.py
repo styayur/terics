@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 GOOGLE_SCOPES = [
+    "https://www.googleapis.com/auth/calendar.events",
     "https://www.googleapis.com/auth/calendar.app.created",
     "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ]

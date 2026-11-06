@@ -8,6 +8,7 @@ from ..errors import TericsParseError
 from ..models import FORMAT_LABELS, ParseIssue, ParseMetadata, ParseResult, RawCourse
 from .html_parser import _parse_grid_matrix
 from .tabular import dedupe_courses, parse_tabular_rows
+from .xlsx_security import MAX_SHEETS, validate_worksheet_shape, validate_xlsx_zip
 
 
 def _cell_value(value: object) -> str:
@@ -34,8 +35,9 @@ def _candidate(matrix: list[list[object]], sheet_name: str) -> tuple[list[RawCou
 def parse_xlsx(data: bytes, file_name: str) -> ParseResult:
     if not data:
         raise TericsParseError("XLSX 文件为空")
+    validate_xlsx_zip(data)
     try:
-        workbook = load_workbook(BytesIO(data), read_only=True, data_only=True)
+        workbook = load_workbook(BytesIO(data), read_only=True, data_only=True, keep_links=False)
     except Exception as exc:
         raise TericsParseError(f"XLSX 文件损坏或不是有效的 Office Open XML 工作簿：{exc}") from exc
 
@@ -44,7 +46,10 @@ def parse_xlsx(data: bytes, file_name: str) -> ParseResult:
     selected_sheets: list[str] = []
     source_rows = 0
     try:
+        if len(workbook.worksheets) > MAX_SHEETS:
+            raise TericsParseError(f"XLSX 工作表数超过 {MAX_SHEETS} 限制")
         for sheet in workbook.worksheets:
+            validate_worksheet_shape(sheet.title, sheet.max_row or 0, sheet.max_column or 0)
             matrix = [
                 [_cell_value(cell) for cell in row]
                 for row in sheet.iter_rows(values_only=True)

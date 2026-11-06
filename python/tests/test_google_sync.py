@@ -4,8 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from terics.google.auth import GoogleOAuthNotConfiguredError, authenticate, google_client_config
-from terics.google.calendar_sync import _google_event, _schedule_hash, execute_sync_plan, plan_google_sync
+from terics.google.auth import GOOGLE_SCOPES, GoogleOAuthNotConfiguredError, authenticate, google_client_config
+from terics.google.calendar_sync import (
+    _google_event,
+    _schedule_hash,
+    execute_sync_plan,
+    plan_google_sync,
+    remove_course_from_google_calendar,
+)
 from terics.timetable_v2 import build_v2_events, parse_terics_json
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,6 +53,51 @@ def test_sync_plan_respects_managed_events_and_explicit_deletion() -> None:
     assert patched and patched[0] == "changed"
 
 
+def test_google_event_identity_and_manual_edit_protection() -> None:
+    data = timetable()
+    event = build_v2_events(data).events[0]
+    body = _google_event(data, event, _schedule_hash(event))
+    private = body["extendedProperties"]["private"]
+    assert body["id"].startswith("terics")
+    assert private["tericsManaged"] == "true"
+    assert private["tericsCourseId"] == event.course_id
+    assert private["tericsMeetingId"] == event.meeting_id
+    assert private["tericsUid"] == event.uid
+    assert private["tericsRenderedHash"]
+    edited = {**body, "id": "edited", "location": "用户手动修改"}
+    plan = plan_google_sync(data, [edited], "calendar-1")
+    assert plan.conflicts
+    assert not plan.updates
+
+
+def test_whole_course_calendar_removal_uses_exact_course_id() -> None:
+    class Client:
+        deleted: list[str]
+
+        def __init__(self) -> None:
+            self.deleted = []
+
+        def list_managed_events(self, _calendar_id: str, _term_id: str):
+            return [
+                {"id": "camel-a", "summary": "课程一", "extendedProperties": {"private": {"tericsManaged": "true", "tericsTermId": "T1", "tericsCourseId": "A"}}},
+                {"id": "legacy-a", "summary": "课程一", "extendedProperties": {"private": {"terics_source": "terics", "terics_term_id": "T1", "terics_course_id": "A"}}},
+                {"id": "course-b", "summary": "课程一", "extendedProperties": {"private": {"tericsManaged": "true", "tericsTermId": "T1", "tericsCourseId": "B"}}},
+                {"id": "title-only", "summary": "课程一", "extendedProperties": {"private": {"tericsManaged": "true", "tericsTermId": "T1"}}},
+            ]
+
+        def delete_event(self, _calendar_id: str, event_id: str) -> None:
+            self.deleted.append(event_id)
+
+    client = Client()
+    result = remove_course_from_google_calendar(client, "target", "T1", "A", "课程一")
+    assert result.candidates == 2
+    assert result.deleted == 2
+    assert result.skipped == 1
+    assert client.deleted == ["camel-a", "legacy-a"]
+    with pytest.raises(ValueError, match="courseId"):
+        remove_course_from_google_calendar(client, "target", "T1", "")
+
+
 def test_empty_data_blocks_sync_and_deletion() -> None:
     data = timetable()
     data["courses"] = []
@@ -62,6 +113,11 @@ def test_google_oauth_requires_configuration(monkeypatch: pytest.MonkeyPatch) ->
     assert google_client_config() is None
     with pytest.raises(GoogleOAuthNotConfiguredError):
         authenticate(store=FakeStore())
+
+
+def test_google_scopes_never_request_gmail() -> None:
+    assert "https://www.googleapis.com/auth/calendar.events" in GOOGLE_SCOPES
+    assert all("gmail" not in scope.lower() for scope in GOOGLE_SCOPES)
 
 
 class FakeStore:

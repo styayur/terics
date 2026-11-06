@@ -2,6 +2,14 @@
 
 The SDK is implemented in `src/connectors/` and bundled both into the MV3 extension and into `python/terics/assets/connector-runtime.js` for Python Playwright injection.
 
+URL-first routing uses a separate Resolver layer:
+
+```text
+URL validator -> School Registry -> Connector Registry -> adapter detection
+```
+
+Resolver output is *identification evidence*, not proof of successful extraction. WHUT's dedicated adapter is selected before any generic Wisedu fallback.
+
 ## Interfaces
 
 ```ts
@@ -70,6 +78,8 @@ The normalized output includes:
 - non-fatal warnings.
 
 The exchange JSON rejects credential-like fields recursively.
+
+Schema validation also runs on opaque extension handoffs before Web preview. A malformed or tampered payload is rejected without consuming the one-time handoff.
 
 ## Adding an adapter
 

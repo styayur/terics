@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "terics Timetable Bridge",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Extract a logged-in Chinese university timetable locally and export .terics.json or ICS.",
   "minimum_chrome_version": "109",
   "permissions": [
@@ -12,6 +12,11 @@
   "background": {
     "service_worker": "service-worker.js"
   },
+  "externally_connectable": {
+    "matches": [
+      "https://styayur.github.io/terics/*"
+    ]
+  },
   "action": {
     "default_title": "terics — 提取当前课表",
     "default_popup": "popup.html"
@@ -19,5 +24,5 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'self';"
   },
-  "version_name": "0.5.0-rc.2"
+  "version_name": "0.6.0-rc.1"
 }

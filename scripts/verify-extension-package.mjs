@@ -17,6 +17,9 @@ if (manifest.host_permissions && manifest.host_permissions.length > 0) throw new
 if (JSON.stringify(manifest.permissions) !== JSON.stringify(["activeTab", "scripting", "storage"])) {
   throw new Error(`unexpected permissions: ${JSON.stringify(manifest.permissions)}`);
 }
+if (JSON.stringify(manifest.externally_connectable) !== JSON.stringify({ matches: ["https://styayur.github.io/terics/*"] })) {
+  throw new Error("externally_connectable must be limited to the terics GitHub Pages path");
+}
 for (const file of ["popup.js", "content.js", "service-worker.js"]) {
   const source = zip.readAsText(file);
   if (/\beval\s*\(|new\s+Function\s*\(/.test(source)) throw new Error(`${file} contains dynamic code evaluation`);

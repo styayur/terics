@@ -209,6 +209,24 @@ describe("WHUT 2026 jwapp adapter", () => {
     expect(extraction.draft.warnings.some((warning) => warning.includes("缺少第 13 节"))).toBe(true);
   });
 
+  it("keeps practiceList meetings and records notArrangeList without inventing a schedule", async () => {
+    const adapter = createWhutAdapter();
+    const ctx = context();
+    const partial = readJson("fixtures/connectors/whut/partial-response.json");
+    const fake = fakeWhutFetch({ schedule: partial });
+    ctx.fetchImpl = fake.fetchImpl;
+    const extraction = await adapter.extract(ctx, semester);
+    expect(extraction.rawRows).toBe(3);
+    expect(extraction.parsedRows).toBe(2);
+    expect(extraction.skippedRows).toBe(1);
+    const courses = extraction.draft.courses;
+    expect(courses.map((course) => course.name)).toContain("实践课程");
+    expect(courses.map((course) => course.name)).not.toContain("待排课程");
+    const practice = courses.find((course) => course.name === "实践课程")!;
+    expect(practice.meetings[0]).toMatchObject({ note: "实践课记录", weekday: 2, startPeriod: 3, endPeriod: 4 });
+    expect(extraction.draft.warnings.some((warning) => warning.includes("待排课程") && warning.includes("星期无效"))).toBe(true);
+  });
+
   it("distinguishes expired login from an empty timetable", async () => {
     const adapter = createWhutAdapter();
     const expired = context();
