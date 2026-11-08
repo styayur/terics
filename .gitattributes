@@ -9,3 +9,5 @@
 *.csv text eol=lf
 *.ics text eol=crlf
 *.xlsx binary
+
+.github/workflows/*.lock.yml linguist-generated=true
