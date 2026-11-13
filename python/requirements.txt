@@ -1,6 +1,6 @@
 beautifulsoup4>=4.13,<5
 openpyxl>=3.1,<4
 playwright>=1.55,<2
-google-auth-oauthlib>=1.2,<2
+google-auth-oauthlib>=1.5.0,<2
 google-api-python-client>=2.180,<3
 keyring>=25,<28
