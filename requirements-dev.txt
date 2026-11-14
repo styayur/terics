@@ -1,4 +1,4 @@
 -r python/requirements.txt
 pytest>=8,<10
-icalendar>=6,<8
+icalendar>=7.3.0,<8
 ruff>=0.9,<1
