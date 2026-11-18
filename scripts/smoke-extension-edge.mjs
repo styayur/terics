@@ -17,6 +17,11 @@ if (workers.length === 0) workers = [await context.waitForEvent("serviceworker",
 const worker = workers[0];
 if (!worker) throw new Error("MV3 service worker did not register");
 const extensionId = new URL(worker.url()).host;
+// The production site claims handoffs on load. Keep this smoke test offline so
+// it alone performs the first claim and can then verify replay protection.
+await context.route("https://styayur.github.io/terics/**", (route) =>
+  route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Handoff test landing</title>" }),
+);
 const page = await context.newPage();
 await page.setViewportSize({ width: 410, height: 900 });
 await page.goto(`chrome-extension://${extensionId}/popup.html`);
