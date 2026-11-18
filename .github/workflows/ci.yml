@@ -29,12 +29,12 @@ jobs:
       - run: npm run package:extension
       - run: npm run verify:extension
       - run: npm run audit:licenses
-      - run: npm audit --audit-level=high
       - run: npm run build
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - run: npm audit --audit-level=high
 
   python:
     name: Python lint, Playwright and tests
