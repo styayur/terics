@@ -34,7 +34,10 @@
     "verify:extension": "node scripts/verify-extension-package.mjs",
     "test:extension-install:edge": "node scripts/smoke-extension-edge.mjs",
     "generate:whut-fixture": "tsx scripts/generate-whut-fixture.ts",
-    "migrate:uid": "tsx scripts/migrate-uid.ts"
+    "migrate:uid": "tsx scripts/migrate-uid.ts",
+    "postinstall": "node scripts/dependency-security.mjs apply",
+    "security:audit": "node scripts/dependency-security.mjs audit",
+    "security:test": "node scripts/dependency-security.mjs test"
   },
   "dependencies": {
     "fflate": "^0.8.3",
